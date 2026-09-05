@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SecureRAG — Company Mail</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- ===== Top bar ===== -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="icon-btn" id="menuBtn" title="Toggle menu">☰</button>
+      <div class="logo">
+        <span class="logo-mark">◆</span>
+        <div class="logo-text">SecureRAG <span>Mail</span></div>
+      </div>
+    </div>
+
+    <div class="searchbar">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="searchInput" placeholder="Search mail" autocomplete="off">
+      <button class="icon-btn clear-btn" id="clearSearch" title="Clear search">✕</button>
+    </div>
+
+    <div class="topbar-right">
+      <div class="defense-select" title="RAG defense mode">
+        🛡 <label for="defenseMode">Defense</label>
+        <select id="defenseMode">
+          <option value="none">None (baseline)</option>
+          <option value="classifier">Classifier (DeBERTa)</option>
+          <option value="slm">SLM Guardrail</option>
+        </select>
+      </div>
+      <div class="avatar" id="avatarBtn" title="Account">D</div>
+    </div>
+  </header>
+
+  <!-- ===== Layout ===== -->
+  <div class="layout">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <button class="compose-btn" id="composeBtn">✏️ <span>Compose</span></button>
+      <ul class="nav-list">
+        <li class="nav-item active" data-folder="inbox">📥 <span>Inbox</span> <em id="inboxCount"></em></li>
+        <li class="nav-item" data-folder="starred">⭐ <span>Starred</span> <em id="starredCount"></em></li>
+        <li class="nav-item" data-folder="sent">📤 <span>Sent</span> <em id="sentCount"></em></li>
+        <li class="nav-item" data-folder="drafts">📝 <span>Drafts</span> <em id="draftsCount"></em></li>
+        <li class="nav-item" data-folder="trash">🗑 <span>Trash</span> <em id="trashCount"></em></li>
+      </ul>
+    </aside>
+
+    <!-- Email list -->
+    <section class="mail-list-pane">
+      <div class="mail-list-header">
+        <span id="folderTitle">Inbox</span>
+        <button class="icon-btn" id="refreshBtn" title="Refresh">⟳</button>
+      </div>
+      <ul class="mail-list" id="mailList"></ul>
+    </section>
+
+    <!-- Reading pane -->
+    <section class="reading-pane">
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon">📧</div>
+        <p>Select an email to read it</p>
+      </div>
+
+      <div class="email-view hidden" id="emailView">
+        <div class="email-toolbar">
+          <button class="icon-btn back-btn" id="backBtn" title="Back to list">←</button>
+          <button class="icon-btn" id="starBtn" title="Star">☆</button>
+          <button class="icon-btn" id="unreadBtn" title="Mark as unread">📩</button>
+          <button class="icon-btn" id="deleteBtn" title="Move to Trash">🗑</button>
+        </div>
+        <div class="email-view-header">
+          <h1 id="evSubject"></h1>
+        </div>
+        <div class="email-meta">
+          <div class="sender-avatar" id="evAvatar"></div>
+          <div class="sender-info">
+            <span class="sender-name" id="evFrom"></span>
+            <span class="sender-addr" id="evAddr"></span>
+          </div>
+          <span class="email-date" id="evDate"></span>
+        </div>
+        <div class="email-body" id="evBody"></div>
+      </div>
+    </section>
+
+    <!-- AI assistant -->
+    <aside class="chat-pane">
+      <div class="chat-header">
+        <div class="chat-title">
+          <div class="bot-avatar">🤖</div>
+          <div>
+            <strong>AI Assistant</strong>
+            <span class="chat-status" id="chatStatus">Defense: None (baseline)</span>
+          </div>
+        </div>
+        <button class="icon-btn chat-close" id="chatClose" title="Close">✕</button>
+      </div>
+
+      <div class="chat-messages" id="chatMessages">
+        <div class="msg bot">
+          <div class="msg-bubble">Hi! I can answer questions about your inbox — try "Summarise my unread emails" or "What did finance say about the Q3 budget?"</div>
+        </div>
+      </div>
+
+      <div class="chat-suggestions" id="chatSuggestions">
+        <button type="button" class="chip">Summarise unread emails</button>
+        <button type="button" class="chip">Q3 budget status?</button>
+        <button type="button" class="chip">Any action items for me?</button>
+      </div>
+
+      <form class="chat-input-row" id="chatForm">
+        <input type="text" id="chatInput" placeholder="Ask about your inbox…" autocomplete="off">
+        <button type="submit" class="send-btn" id="sendBtn">➤</button>
+      </form>
+    </aside>
+  </div>
+
+  <!-- Floating chat button (≤1080px) -->
+  <button class="chat-fab" id="chatFab" title="Open assistant">🤖</button>
+
+  <!-- Mobile drawer scrim -->
+  <div class="scrim" id="scrim"></div>
+
+  <!-- ===== Compose modal ===== -->
+  <div class="modal-overlay hidden" id="composeModal">
+    <div class="compose-card">
+      <div class="compose-header">
+        <span>New Message</span>
+        <button type="button" class="icon-btn" id="composeClose" title="Close">✕</button>
+      </div>
+      <form id="composeForm">
+        <input type="email" id="composeTo" placeholder="To" autocomplete="off">
+        <input type="text" id="composeSubject" placeholder="Subject" autocomplete="off">
+        <textarea id="composeBody" placeholder="Write your message…"></textarea>
+        <div class="compose-actions">
+          <button type="submit" class="primary-btn">Send</button>
+          <button type="button" class="ghost-btn" id="saveDraftBtn">Save draft</button>
+          <button type="button" class="ghost-btn discard-btn" id="discardBtn" title="Discard">🗑</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
