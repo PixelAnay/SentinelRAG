@@ -1,5 +1,5 @@
 /* =========================================================
-   SecureRAG Mail — dashboard logic (front-end only)
+   SentinelRAG Mail — dashboard logic (front-end only)
    Backend contract (for later): POST /api/chat
    { message: string, defense: "none"|"classifier"|"slm" }
    → { reply, latency_ms, retrieved: [{id, verdict}] }
