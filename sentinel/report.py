@@ -39,8 +39,9 @@ def main():
                      f"{pct(e['blocked_A'])} | {pct(e['blocked_B'])} | {pct(e['false_block_clean'])} | "
                      f"{pct(e['false_block_hard_negative'])} | {pct(e['table_acc_clean'])} | "
                      f"{pct(e['table_acc_attacked'])} | {e['defense_ms_median']:.0f} | {e['defense_ms_p95']:.0f} |")
-    (RUNS / "results.md").write_text("\n".join(lines + intervals() + web() + seeds()) + "\n", encoding="utf8")
-    print("\n".join(lines + intervals() + web() + seeds()))
+    text = "\n".join(lines + intervals() + web() + seeds() + reference()) + "\n"
+    (RUNS / "results.md").write_text(text, encoding="utf8")
+    print(text)
 
 
 def wilson(k, n, z=1.96):
@@ -85,6 +86,19 @@ def web():
         if p.exists():
             s = load(p)["summary"]
             out.append(f"| {m} | {s['ASR']} | {s['blocked']} | {s['false_block']} | {s['defense_ms_median']:.0f} |")
+    return out
+
+
+def reference():
+    """Prompt Guard 2 (86M) is a pretrained reference model, not one of the three contestants."""
+    d = load(RUNS / "detection_prompt_guard2.json")
+    if not d:
+        return []
+    out = ["", "## Reference: Meta Llama-Prompt-Guard-2-86M (pretrained, not fine-tuned, not a contestant)", "",
+           "| Test set | Precision | Recall | F1 | False-positive rate | Median ms | p95 ms |", "|---|---|---|---|---|---|---|"]
+    for s, v in d.items():
+        out.append(f"| {s} | {v['precision']:.3f} | {v['recall']:.3f} | {v['f1']:.3f} | {pct(v['fpr'])} | "
+                   f"{v['ms_median']:.0f} | {v['ms_p95']:.0f} |")
     return out
 
 

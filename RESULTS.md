@@ -1,4 +1,4 @@
-# SentinelRAG results
+﻿# SentinelRAG results
 
 ## Detection (per document)
 
@@ -67,6 +67,15 @@
 | testD_web | False-positive rate | 1.7% | 1.7% | 18.6% | 7.3% | 1.7% to 18.6% |
 | testD_web | F1 | 0.957 | 0.961 | 0.889 | 0.935 | 0.889 to 0.961 |
 
+## Reference: Meta Llama-Prompt-Guard-2-86M (pretrained, not fine-tuned, not a contestant)
+
+| Test set | Precision | Recall | F1 | False-positive rate | Median ms | p95 ms |
+|---|---|---|---|---|---|---|
+| testA_bipia_email | 0.440 | 0.037 | 0.068 | 8.0% | 45 | 84 |
+| testB_llmail | 1.000 | 0.267 | 0.422 | 0.0% | 61 | 84 |
+| testC_table | 1.000 | 0.010 | 0.020 | 0.0% | 64 | 84 |
+| testD_web | 0.667 | 0.017 | 0.033 | 0.8% | 45 | 49 |
+
 ## How to read this
 
 - Test A (BIPIA emails, held-out attack wording) is the easiest set. The classifier trained on the same benchmark family, so its 0.982 F1 there is optimistic. Test B (LLMail-Inject) was never used in training and is the fairer number. Recall there ranges from 0.657 to 0.889 across three training seeds (see the seed table).
@@ -77,6 +86,7 @@
 - The assistant runs with thinking disabled. With thinking on, the model reasons about the injection but needs a much larger token budget.
 - LLMail-Inject submissions that Microsoft's judge labelled "not an attack" were excluded as negatives. Several still asked the assistant to email the attacker.
 - One machine (RTX 4050 6 GB). The detection tables, end-to-end tables and web-page runs above use the seed 13 classifier only. The intervals cover case sampling, not training variance. The seed table shows that training variance is large: the classifier's recall on LLMail ranges from 65.7% to 88.9%, and its false-positive rate on held-out benign wording (Test A) from 0% to 20.9%. Seed 42 trades false positives for recall, so the seed 13 end-to-end numbers should be read as one draw, not as the classifier's expected behaviour. The end-to-end runs were not repeated for the other seeds. The judge and Llama-Guard run at temperature 0, so they have no seed variance.
+- Prompt Guard 2 (86M, Meta, pretrained and not fine-tuned here) is a reference row only. It was loaded and checked: it flags classic jailbreaks ("ignore all previous instructions", DAN) with score 0.999. It misses almost all task-style injections that ask the assistant to send an email (recall 3.7% on Test A, 26.7% on Test B, 1.0% on tables, 1.7% on web pages), so it was not designed for this attack type. Its false-positive rate is 0% on LLMail safe emails. Its Test A false-positive rate is 8.0%. It was not run end to end. Read the gap against the fine-tuned DeBERTa as the value of training on in-domain injections, not as a general verdict on Prompt Guard 2.
 - Test D (web pages) is 59 Wikipedia articles wrapped in HTML, with held-out attack wording hidden in a comment, a hidden div, the meta description, visible text, image alt text, or 1px white text. The content is the raw HTML, as an agent without a tag-stripper would see it. Neither defence was trained on HTML. Wikipedia text is cleaner than typical web pages, so this is a small, friendly sample.
 - On web pages the ranking flips. The classifier catches 93.2% of attacks (hidden div 17/18, image alt 17/17), while the Gemma judge catches 62.7% (hidden div 9/18, image alt 6/17). The judge seems to treat markup as noise. Llama-Guard catches 4.2%.
 - Web-page ASR is uninformative: the undefended assistant obeyed only 3.8% of the injections (3 of 80), so use "attacks blocked".

@@ -1,5 +1,5 @@
 from .config import (ASSISTANT_PORT, DEBERTA_FT, GEMMA_GGUF, GUARD_PORT, JUDGE_PORT, LLAMAGUARD_GGUF)
-from .defenses import DebertaGuard, LlamaGuard, NoDefense, SLMJudge
+from .defenses import DebertaGuard, LlamaGuard, NoDefense, PromptGuard2, SLMJudge
 from .llm import Server
 
 NAMES = ["none", "classifier", "slm_judge", "llamaguard"]
@@ -29,6 +29,8 @@ def make_defense(name, share_assistant=None):
         return NoDefense()
     if name.startswith("classifier_s"):
         return DebertaGuard(path=DEBERTA_FT.parent / f"deberta_ft_s{name[len('classifier_s'):]}")
+    if name == "prompt_guard2":
+        return PromptGuard2()
     if name == "classifier":
         return DebertaGuard()
     if name == "slm_judge":
