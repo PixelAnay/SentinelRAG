@@ -132,7 +132,7 @@ def chat(req: Chat):
         r = answer(req.defense, req.message, docs)
     reply = r["reply"] or "(no text answer)"
     for c in r["calls"]:
-        reply += f"\n\n[Assistant tried to send an email to {c['to'] or '?'}. Nothing was sent: demo mode.]"
+        reply += f"\n\n[Assistant tried to send an email to {c['to'] or '?'}. Nothing was sent.]"
     return dict(reply=reply, latency_ms=r["total_ms"], defense_ms=r["defense_ms"],
                 retrieved=[dict(id=d["id"], verdict=d["verdict"], score=d["score"]) for d in r["docs"]],
                 tool_calls=r["calls"])

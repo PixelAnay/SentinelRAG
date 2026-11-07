@@ -27,14 +27,13 @@
     <div class="mast-tools">
       <span class="status" id="serverStatus" role="status">checking backend</span>
       <button type="button" class="switch" id="revealBtn" aria-pressed="false"
-              title="Presenter switch: mark every email, page and table that holds an injection"><i aria-hidden="true"></i>Show attacks</button>
+              title="Mark every email, page and table that holds an injection"><i aria-hidden="true"></i>Show attacks</button>
     </div>
   </header>
 
   <main id="main" tabindex="-1">
     <section class="view" id="view-overview" aria-label="Overview"></section>
 
-    <!-- ===== Mailbox ===== -->
     <section class="view" id="view-mailbox" aria-label="Mailbox" hidden>
       <div class="mailbox">
         <div class="mb-list">
@@ -92,7 +91,6 @@
     <section class="view" id="view-method" aria-label="Method" hidden></section>
   </main>
 
-  <!-- ===== Write an incoming email ===== -->
   <dialog class="sheet-dialog" id="writeDialog" aria-labelledby="writeTitle">
     <form method="dialog" id="writeForm">
       <h2 id="writeTitle">Write an incoming email</h2>
@@ -105,7 +103,7 @@
       <input class="field" id="wSubject" required placeholder="Subject line">
       <label class="label" for="wBody">Body</label>
       <textarea class="field" id="wBody" required placeholder="Email text. To test a filter, include an instruction aimed at the assistant."></textarea>
-      <label class="check"><input type="checkbox" id="wPoison"> This email contains an injection (only used by the presenter switch)</label>
+      <label class="check"><input type="checkbox" id="wPoison"> This email contains an injection (revealed by Show attacks)</label>
       <div class="dialog-actions">
         <button type="button" class="btn quiet" id="writeCancel">Cancel</button>
         <button type="submit" class="btn" value="ok">Add to inbox</button>

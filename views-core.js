@@ -1,8 +1,4 @@
-/* =========================================================
-   Shared pieces: helpers, the defence registry, the outcome table
-   used by Web pages, Documents and Case studies, routing,
-   backend status and the presenter switch.
-========================================================= */
+// Helpers shared by every view. Views register in SR.init and load the first time they are opened.
 "use strict";
 
 const SR = {
@@ -22,7 +18,6 @@ const SR = {
   ALL: ["none", "classifier", "slm", "llamaguard", "pg2"]
 };
 
-/* ---------- helpers ---------- */
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -64,7 +59,7 @@ async function runOne(query, docs, mode) {
   return out.results[0];
 }
 
-/* Mark the injected span inside a source text (shown only with the presenter switch on). */
+/* Wraps the injected text in a mark. The mark only shows while Show attacks is on. */
 function marked(src, inj) {
   if (inj) {
     const i = src.indexOf(inj);
@@ -76,7 +71,6 @@ function marked(src, inj) {
 const stateBox = (title, text, kind = "") => `<div class="state ${kind}"><b>${esc(title)}</b>${text}</div>`;
 const noData = () => stateBox("The case data did not load", `${esc(SR.dataError || "Unknown error.")}<br>Start the backend with <code>python -m sentinel.server</code> and open <code>http://127.0.0.1:8000</code>.`, "error");
 
-/* ---------- outcome of one run ---------- */
 function assistantOutcome(r) {
   const parts = [];
   for (const c of r.calls) {
@@ -230,7 +224,6 @@ function pickerLayout(view, { title, intro, items, render, group }) {
   open(0);
 }
 
-/* ---------- routing ---------- */
 const VIEWS = ["overview", "mailbox", "web", "documents", "cases", "detector", "results", "method"];
 function showView(name) {
   if (!VIEWS.includes(name)) name = "overview";
@@ -244,7 +237,6 @@ function showView(name) {
 }
 window.addEventListener("hashchange", () => showView(location.hash.slice(1)));
 
-/* ---------- presenter switch ---------- */
 $("#revealBtn").addEventListener("click", () => {
   const on = !document.body.classList.contains("reveal");
   document.body.classList.toggle("reveal", on);
@@ -252,7 +244,6 @@ $("#revealBtn").addEventListener("click", () => {
   SR.onReveal.forEach(f => f(on));
 });
 
-/* ---------- backend status ---------- */
 async function pollStatus() {
   const s = $("#serverStatus");
   try {
@@ -270,7 +261,6 @@ async function pollStatus() {
 pollStatus();
 setInterval(pollStatus, 15000);
 
-/* ---------- boot (runs after every script has loaded) ---------- */
 SR.ready = (async () => {
   try { SR.data = await api("/api/showcase"); }
   catch (e) { SR.dataError = e.message; }

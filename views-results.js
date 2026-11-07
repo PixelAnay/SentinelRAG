@@ -1,7 +1,4 @@
-/* =========================================================
-   Overview, Results and Method. Every number on these pages is
-   read from showcase/results.json (built by scripts/build_showcase.py).
-========================================================= */
+// Figures read showcase/results.json, so they never drift from the saved runs.
 "use strict";
 
 const SHORT = { none: "No filter", classifier: "DeBERTa", slm_judge: "Gemma judge", llamaguard: "Llama-Guard", prompt_guard2: "Prompt Guard 2" };
@@ -47,7 +44,6 @@ async function loadResults(host) {
   catch (e) { host.innerHTML = `<div class="page">${stateBox("The results did not load", esc(e.message), "error")}</div>`; return null; }
 }
 
-/* ---------- Overview ---------- */
 function tradeoffPlot(C) {
   const pts = E2ES.map(k => {
     const x = wilson(C[k].blockedB.k, C[k].blockedB.n), y = wilson(C[k].hardNegBlocked.k, C[k].hardNegBlocked.n);
@@ -144,12 +140,11 @@ SR.init.overview = async function () {
         <li><a href="#cases">Case studies</a><p>Fifteen recorded cases, including where each filter fails, ready to rerun live.</p></li>
         <li><a href="#detector">Detector</a><p>Any text against every detector, with scores and timings.</p></li>
       </ol>
-      <p class="hint">Presenting? Keep <b>Show attacks</b> off while you demonstrate, then switch it on to point at the injected text.</p>
+      <p class="hint"><b>Show attacks</b> marks the injected text in every view. It is off by default.</p>
     </section>
   </div>`;
 };
 
-/* ---------- Results ---------- */
 SR.init.results = async function () {
   const host = $("#view-results");
   const R = await loadResults(host);
@@ -236,7 +231,6 @@ SR.init.results = async function () {
   $$(".toc a", host).forEach(a => a.addEventListener("click", ev => { ev.preventDefault(); $(a.getAttribute("href"), host).scrollIntoView({ block: "start" }); }));
 };
 
-/* ---------- Method ---------- */
 SR.init.method = function () {
   $("#view-method").innerHTML = `<div class="page prose">
     <header class="page-head"><h1>Method</h1>
