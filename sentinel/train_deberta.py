@@ -4,6 +4,7 @@ Run: python -m sentinel.train_deberta
 """
 import json
 import random
+import sys
 import time
 
 import numpy as np
@@ -42,9 +43,10 @@ def evaluate(model, rows, tok):
     return f1_score(gold, preds)
 
 
-def main():
-    random.seed(SEED)
-    torch.manual_seed(SEED)
+def main(seed=SEED):
+    random.seed(seed)
+    torch.manual_seed(seed)
+    out_dir = DEBERTA_FT if seed == SEED else DEBERTA_FT.parent / f"deberta_ft_s{seed}"
     tok = AutoTokenizer.from_pretrained(str(DEBERTA_BASE))
     model = AutoModelForSequenceClassification.from_pretrained(str(DEBERTA_BASE), num_labels=2, dtype=torch.float32).to("cuda")
     train, val = load("train"), load("val")
@@ -70,11 +72,11 @@ def main():
         print(f"epoch {ep} val F1 {f1:.4f} ({time.time() - t0:.0f}s)", flush=True)
         if f1 > best:
             best = f1
-            DEBERTA_FT.mkdir(parents=True, exist_ok=True)
-            model.save_pretrained(DEBERTA_FT)
-            tok.save_pretrained(DEBERTA_FT)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            model.save_pretrained(out_dir)
+            tok.save_pretrained(out_dir)
     print("best val F1", best)
 
 
 if __name__ == "__main__":
-    main()
+    main(int(sys.argv[1]) if len(sys.argv) > 1 else SEED)

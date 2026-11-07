@@ -39,8 +39,8 @@ def main():
                      f"{pct(e['blocked_A'])} | {pct(e['blocked_B'])} | {pct(e['false_block_clean'])} | "
                      f"{pct(e['false_block_hard_negative'])} | {pct(e['table_acc_clean'])} | "
                      f"{pct(e['table_acc_attacked'])} | {e['defense_ms_median']:.0f} | {e['defense_ms_p95']:.0f} |")
-    (RUNS / "results.md").write_text("\n".join(lines + intervals() + web()) + "\n", encoding="utf8")
-    print("\n".join(lines + intervals() + web()))
+    (RUNS / "results.md").write_text("\n".join(lines + intervals() + web() + seeds()) + "\n", encoding="utf8")
+    print("\n".join(lines + intervals() + web() + seeds()))
 
 
 def wilson(k, n, z=1.96):
@@ -87,6 +87,20 @@ def web():
             out.append(f"| {m} | {s['ASR']} | {s['blocked']} | {s['false_block']} | {s['defense_ms_median']:.0f} |")
     return out
 
+
+def seeds():
+    out = ["", "## Classifier across three training seeds", "",
+           "| Test set | Metric | Seed 13 | Seed 21 | Seed 42 | Mean | Range |", "|---|---|---|---|---|---|---|"]
+    runs = [load(RUNS / f"detection_{n}.json") for n in ["classifier", "classifier_s21", "classifier_s42"]]
+    if not all(runs):
+        return []
+    for s in runs[0]:
+        for key, label in [("recall", "Recall"), ("fpr", "False-positive rate"), ("f1", "F1")]:
+            v = [r[s][key] for r in runs]
+            fmt = (lambda x: f"{100 * x:.1f}%") if key != "f1" else (lambda x: f"{x:.3f}")
+            out.append(f"| {s} | {label} | {fmt(v[0])} | {fmt(v[1])} | {fmt(v[2])} | {fmt(sum(v) / 3)} | "
+                       f"{fmt(min(v))} to {fmt(max(v))} |")
+    return out
 
 if __name__ == "__main__":
     main()

@@ -1,4 +1,4 @@
-from .config import (ASSISTANT_PORT, GEMMA_GGUF, GUARD_PORT, JUDGE_PORT, LLAMAGUARD_GGUF)
+from .config import (ASSISTANT_PORT, DEBERTA_FT, GEMMA_GGUF, GUARD_PORT, JUDGE_PORT, LLAMAGUARD_GGUF)
 from .defenses import DebertaGuard, LlamaGuard, NoDefense, SLMJudge
 from .llm import Server
 
@@ -27,6 +27,8 @@ def make_defense(name, share_assistant=None):
     """share_assistant: an already running Server to reuse as the judge (saves VRAM)."""
     if name == "none":
         return NoDefense()
+    if name.startswith("classifier_s"):
+        return DebertaGuard(path=DEBERTA_FT.parent / f"deberta_ft_s{name[len('classifier_s'):]}")
     if name == "classifier":
         return DebertaGuard()
     if name == "slm_judge":

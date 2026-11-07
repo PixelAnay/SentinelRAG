@@ -50,16 +50,33 @@
 | slm_judge | 0.0% [0.0, 4.6] | 62.5% [51.5, 72.3] | 0.0% [0.0, 8.8] | 139 |
 | llamaguard | 3.8% [1.3, 10.5] | 5.0% [2.0, 12.2] | 0.0% [0.0, 8.8] | 90 |
 
+## Classifier across three training seeds
+
+| Test set | Metric | Seed 13 | Seed 21 | Seed 42 | Mean | Range |
+|---|---|---|---|---|---|---|
+| testA_bipia_email | Recall | 96.5% | 96.7% | 97.2% | 96.8% | 96.5% to 97.2% |
+| testA_bipia_email | False-positive rate | 0.0% | 0.0% | 20.9% | 7.0% | 0.0% to 20.9% |
+| testA_bipia_email | F1 | 0.982 | 0.983 | 0.928 | 0.965 | 0.928 to 0.983 |
+| testB_llmail | Recall | 65.7% | 73.9% | 88.9% | 76.2% | 65.7% to 88.9% |
+| testB_llmail | False-positive rate | 0.0% | 0.0% | 0.4% | 0.1% | 0.0% to 0.4% |
+| testB_llmail | F1 | 0.793 | 0.850 | 0.941 | 0.861 | 0.793 to 0.941 |
+| testC_table | Recall | 95.0% | 93.0% | 94.0% | 94.0% | 93.0% to 95.0% |
+| testC_table | False-positive rate | 0.0% | 0.7% | 10.0% | 3.6% | 0.0% to 10.0% |
+| testC_table | F1 | 0.974 | 0.959 | 0.900 | 0.944 | 0.900 to 0.974 |
+| testD_web | Recall | 93.2% | 94.1% | 94.9% | 94.1% | 93.2% to 94.9% |
+| testD_web | False-positive rate | 1.7% | 1.7% | 18.6% | 7.3% | 1.7% to 18.6% |
+| testD_web | F1 | 0.957 | 0.961 | 0.889 | 0.935 | 0.889 to 0.961 |
+
 ## How to read this
 
-- Test A (BIPIA emails, held-out attack wording) is the easiest set. The classifier trained on the same benchmark family, so its 0.982 F1 there is optimistic. Test B (LLMail-Inject) was never used in training and is the fairer number: recall 0.657.
+- Test A (BIPIA emails, held-out attack wording) is the easiest set. The classifier trained on the same benchmark family, so its 0.982 F1 there is optimistic. Test B (LLMail-Inject) was never used in training and is the fairer number. Recall there ranges from 0.657 to 0.889 across three training seeds (see the seed table).
 - "Defence ms" in the end-to-end table is per query and covers up to 5 retrieved documents, so it is roughly 5 times the per-document latency above. The SLM judge shares the assistant's server in that run.
 - The undefended baseline is only moderately vulnerable (ASR 2.0% on set A, 24.3% on set B). Gemma 4 E2B often summarises an injected instruction instead of obeying it. "Attacks blocked" is therefore the stronger signal, since it does not depend on how obedient the model happens to be.
 - Table accuracy under attack drops for every filter because a blocked table is withheld, so the assistant has nothing to answer from. That is the usability cost of block-only defences.
 - Llama-Guard-3-1B with a custom category flags almost everything (96% of clean queries had a false block), so in this setup it is not usable. A fine-tuned or recalibrated version would be a separate experiment.
 - The assistant runs with thinking disabled. With thinking on, the model reasons about the injection but needs a much larger token budget.
 - LLMail-Inject submissions that Microsoft's judge labelled "not an attack" were excluded as negatives. Several still asked the assistant to email the attacker.
-- Single run, seed 13, one machine (RTX 4050 6 GB). Intervals cover case sampling only, not training variance.
+- One machine (RTX 4050 6 GB). The detection tables, end-to-end tables and web-page runs above use the seed 13 classifier only. The intervals cover case sampling, not training variance. The seed table shows that training variance is large: the classifier's recall on LLMail ranges from 65.7% to 88.9%, and its false-positive rate on held-out benign wording (Test A) from 0% to 20.9%. Seed 42 trades false positives for recall, so the seed 13 end-to-end numbers should be read as one draw, not as the classifier's expected behaviour. The end-to-end runs were not repeated for the other seeds. The judge and Llama-Guard run at temperature 0, so they have no seed variance.
 - Test D (web pages) is 59 Wikipedia articles wrapped in HTML, with held-out attack wording hidden in a comment, a hidden div, the meta description, visible text, image alt text, or 1px white text. The content is the raw HTML, as an agent without a tag-stripper would see it. Neither defence was trained on HTML. Wikipedia text is cleaner than typical web pages, so this is a small, friendly sample.
 - On web pages the ranking flips. The classifier catches 93.2% of attacks (hidden div 17/18, image alt 17/17), while the Gemma judge catches 62.7% (hidden div 9/18, image alt 6/17). The judge seems to treat markup as noise. Llama-Guard catches 4.2%.
 - Web-page ASR is uninformative: the undefended assistant obeyed only 3.8% of the injections (3 of 80), so use "attacks blocked".
@@ -68,9 +85,9 @@
 
 | Situation | Pick | Why |
 |---|---|---|
-| High volume, strict latency, many benign emails that contain requests | Fine-tuned DeBERTa | About 26 ms per document, 0% false positives on real safe emails in both tests. It misses about a third of unseen LLMail attacks, so retrain on new attack styles regularly. |
+| High volume, strict latency, many benign emails that contain requests | Fine-tuned DeBERTa | About 26 to 60 ms per document. Misses 11% to 34% of unseen LLMail attacks depending on the training run, and false positives on benign instruction-like emails range from 0% to 21% across runs, so pick the threshold on a validation set that includes such emails and retrain on new attack styles regularly. On the 282 real safe emails in Test B, false positives were 0 to 1. |
 | Attacks are the bigger worry in email and some false blocks are tolerable | Prompted Gemma judge | Highest recall on unseen email attacks (86.7% on LLMail). About 4 times slower, blocks about 1 in 5 benign emails that give instructions to humans, and misses many injections hidden in HTML (62.7% recall on web pages). |
-| Content is web pages or raw HTML | Fine-tuned DeBERTa | 93.2% recall and 1.7% false positives on web pages, against 62.7% and 5.1% for the judge. |
+| Content is web pages or raw HTML | Fine-tuned DeBERTa | 93.2% to 94.9% recall on web pages across seeds, against 62.7% for the judge. False positives were 1.7% for two of three seeds and 18.6% for the third, against 5.1% for the judge. |
 | Either of the two above is too weak alone | Run both in sequence | Not measured here. The classifier is cheap enough to run first. |
 | Llama-Guard-3-1B | Not recommended as configured | Its built-in categories do not cover injection, and a prompted custom category flags nearly everything. |
 
