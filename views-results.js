@@ -188,7 +188,7 @@ SR.init.results = async function () {
       ${fig("Detection F1 per document, by test set. Prompt Guard 2 (hatched) is a reference, not a contestant.", bars(f1Groups, { fmt: v => v.toFixed(3) }),
         `On set B, which the classifier never trained on, the judge leads: ${D.slm_judge.testB_llmail.f1.toFixed(3)} against ${D.classifier.testB_llmail.f1.toFixed(3)}.
          On the in-family sets A, C and D the classifier leads. Set A flatters the classifier because it trained on the same benchmark family.`)}
-      <figure class="figure"><figcaption><span class="fig-n">Figure ${++figN}.</span> Recall and false-positive rate. Bold marks the best in each column.</figcaption>
+      <figure class="figure"><figcaption><span class="fig-n">Figure ${++figN}.</span> Recall and false-positive rate. The shaded cell is the best in each column.</figcaption>
         <div class="tbl-scroll"><table class="plain numeric">
           <thead><tr><th scope="col" rowspan="2">Detector</th>${SETS.map(([, l]) => `<th scope="colgroup" colspan="2">Set ${l}</th>`).join("")}</tr>
           <tr>${SETS.map(() => `<th scope="col">Recall</th><th scope="col">False pos.</th>`).join("")}</tr></thead>
