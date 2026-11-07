@@ -1,4 +1,4 @@
-﻿# SentinelRAG design
+# SentinelRAG design
 
 Supersedes `Basics.md` (kept for reference).
 
