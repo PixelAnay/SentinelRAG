@@ -16,6 +16,7 @@
   --font: 'Roboto', system-ui, sans-serif;
   --font-display: 'Google Sans', 'Roboto', sans-serif;
   --topbar-h: 64px;
+  --tabs-h: 46px;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -100,7 +101,7 @@ button { font-family: inherit; }
 .layout {
   display: grid;
   grid-template-columns: 224px minmax(260px, 340px) minmax(0, 1fr) minmax(280px, 360px);
-  height: calc(100dvh - var(--topbar-h));
+  height: calc(100dvh - var(--topbar-h) - var(--tabs-h));
   padding: 0 12px 12px;
   gap: 0;
 }

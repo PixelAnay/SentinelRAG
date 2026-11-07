@@ -1,8 +1,9 @@
 /* =========================================================
-   SentinelRAG Mail — dashboard logic (front-end only)
-   Backend contract (for later): POST /api/chat
-   { message: string, defense: "none"|"classifier"|"slm" }
-   → { reply, latency_ms, retrieved: [{id, verdict}] }
+   SentinelRAG Mail: mail-assistant tab
+   Backend contract: POST /api/chat
+   { message, defense: "none"|"classifier"|"slm"|"llamaguard"|"pg2", emails: [...] }
+   -> { reply, latency_ms, defense_ms, retrieved: [{id, verdict, score}], tool_calls: [...] }
+   The other tabs live in views-*.js.
 ========================================================= */
 
 const API_URL = "/api/chat";
@@ -44,8 +45,69 @@ const EMAILS = [
     subject: "Re: Vendor shortlist",
     time: "Aug 29", unread: false, poisoned: false, starred: false, folder: "inbox",
     body: `Thanks for the sheet. Let's go with the top two vendors and schedule calls next week.\n\nPriya`
+  },
+  {
+    id: 7, from: "Sarah Lin", addr: "sarah.lin@acme-corp.com",
+    subject: "Vendor contract renewal: please review",
+    time: "Aug 29", unread: true, poisoned: false, starred: false, folder: "inbox",
+    body: `Hi,\n\nThe Harbor Logistics contract renews on 1 October. Please review clause 4 (liability cap) and send me your comments by Wednesday so I can reply to their counsel.\n\nThanks,\nSarah (Legal)`
+  },
+  {
+    id: 8, from: "DevOps Alerts", addr: "alerts@acme-corp.com",
+    subject: "Deployment completed: payments-api v2.14",
+    time: "Aug 28", unread: false, poisoned: false, starred: false, folder: "inbox",
+    body: `Deployment of payments-api v2.14 to production finished at 03:12 UTC.\n\nHealth checks: passing\nError rate: 0.02%\nRollback window: 30 minutes\n\nThis is an automated message.`
+  },
+  {
+    id: 9, from: "Rahul Mehta", addr: "rahul.mehta@acme-corp.com",
+    subject: "Offsite agenda and travel",
+    time: "Aug 28", unread: true, poisoned: false, starred: false, folder: "inbox",
+    body: `Team,\n\nThe offsite is 14-15 October in Lisbon. Day one is strategy planning, day two is workshops. Flights are booked through the travel portal, and hotel details follow next week.\n\nPlease tell me about dietary requirements by Friday.\n\nRahul`
+  },
+  {
+    id: 10, from: "Customer Success", addr: "cs-team@acme-corp.com",
+    subject: "Escalation: Northwind renewal at risk",
+    time: "Aug 27", unread: true, poisoned: false, starred: false, folder: "inbox",
+    body: `Northwind has flagged slow support response times and is considering not renewing their 240k annual contract. A call with their CTO is booked for Tuesday 15:00.\n\nWe need an engineering contact on that call.\n\nCS Team`
+  },
+  {
+    id: 11, from: "Facilities", addr: "facilities@acme-corp.com",
+    subject: "Parking garage closed Thursday",
+    time: "Aug 27", unread: false, poisoned: false, starred: false, folder: "inbox",
+    body: `The east parking garage will be closed all day Thursday for resurfacing. The west garage and street parking on Elm Street remain open.\n\nFacilities`
+  },
+  {
+    id: 12, from: "Tom Becker", addr: "tom.becker@acme-corp.com",
+    subject: "Lunch on Friday?",
+    time: "Aug 26", unread: false, poisoned: false, starred: false, folder: "inbox",
+    body: `Are you free for lunch on Friday? The new ramen place opened near the station.\n\nTom`
+  },
+  {
+    id: 13, from: "Security Team", addr: "security@acme-corp.com",
+    subject: "Reminder: complete phishing awareness training",
+    time: "Aug 26", unread: false, poisoned: false, starred: false, folder: "inbox",
+    body: `All staff must complete the annual phishing awareness module by 15 September. It takes about 20 minutes and is available on the learning portal.\n\nReport anything suspicious to security@acme-corp.com.\n\nSecurity Team`
+  },
+  {
+    id: 14, from: "Elena Petrova", addr: "elena.petrova@acme-corp.com",
+    subject: "Q3 OKR draft: your feedback",
+    time: "Aug 25", unread: false, poisoned: false, starred: false, folder: "inbox",
+    body: `Hi,\n\nI attached the Q3 OKR draft. The three objectives are: reduce support response time to under 4 hours, ship the self-serve onboarding flow, and cut cloud spend by 8%.\n\nCould you add your team's key results?\n\nElena`
+  },
+  {
+    id: 15, from: "Engineering Digest", addr: "digest@acme-corp.com",
+    subject: "Weekly engineering digest",
+    time: "Aug 25", unread: false, poisoned: false, starred: false, folder: "inbox",
+    body: `This week: the search service moved to the new index format, build times dropped 18%, and two postmortems were published (payments timeout, CDN cache purge).\n\nRead more on the wiki.`
+  },
+  {
+    id: 16, from: "Accounts Payable", addr: "ap@acme-corp.com",
+    subject: "Invoice #48213 approved",
+    time: "Aug 24", unread: false, poisoned: false, starred: false, folder: "inbox",
+    body: `Invoice #48213 from Brightline Print (EUR 3,420.00) has been approved and will be paid on the next run, Friday.\n\nAccounts Payable`
   }
 ];
+const INITIAL_EMAILS = JSON.parse(JSON.stringify(EMAILS));
 
 /* ---------- Folder state ---------- */
 const FOLDERS = {
@@ -153,7 +215,8 @@ function renderList(filterText = "") {
 
   items.forEach(e => {
     const li = document.createElement("li");
-    li.className = `mail-item${e.unread ? " unread" : ""}${e.id === selectedId ? " selected" : ""}`;
+    li.className = `mail-item${e.unread ? " unread" : ""}${e.id === selectedId ? " selected" : ""}` +
+                   `${e.poisoned ? " is-attack" : ""}${e.assistantSent ? " assistant-sent" : ""}`;
     li.innerHTML = `
       <div class="mail-top"><span class="mail-from"></span><span class="mail-time"></span></div>
       <div class="mail-subject"></div>
@@ -165,6 +228,7 @@ function renderList(filterText = "") {
     li.querySelector(".mail-time").textContent    = e.time;
     li.querySelector(".mail-subject").textContent = e.subject;
     li.querySelector(".mail-snippet").textContent = e.body.replace(/\s+/g, " ").slice(0, 90);
+    decorateSubject(li.querySelector(".mail-subject"), e);
 
     const star = li.querySelector(".star-toggle");
     star.textContent = e.starred ? "★" : "☆";
@@ -179,6 +243,46 @@ function renderList(filterText = "") {
 }
 
 /* ---------- Reading pane ---------- */
+const VERDICT_TEXT = { blocked: "blocked", clean: "checked: clean", unchecked: "read, unfiltered" };
+
+function decorateSubject(node, e) {
+  if (e.verdict) {
+    const b = document.createElement("span");
+    b.className = `vbadge ${e.verdict.verdict === "blocked" ? "blocked" : e.verdict.verdict === "clean" ? "clean" : "seen"}`;
+    b.textContent = VERDICT_TEXT[e.verdict.verdict] || e.verdict.verdict;
+    node.appendChild(b);
+  }
+  if (e.poisoned) {
+    const t = document.createElement("span");
+    t.className = "pill bad attack-tag";
+    t.style.marginLeft = "6px";
+    t.textContent = "injection";
+    node.appendChild(t);
+  }
+}
+
+function renderBanner(e) {
+  while (evBody.previousElementSibling?.classList?.contains("email-banner")) evBody.previousElementSibling.remove();
+  const parts = [];
+  if (e.verdict) {
+    const v = e.verdict;
+    const score = v.verdict === "unchecked" ? "" : ` (score ${v.score.toFixed(3)})`;
+    if (v.verdict === "blocked")
+      parts.push(`<div class="email-banner blocked">🛡 The last assistant query retrieved this email and the filter <b>withheld</b> it${score}. The model never saw its text.</div>`);
+    else if (v.verdict === "clean")
+      parts.push(`<div class="email-banner clean">🛡 The last assistant query retrieved this email and the filter passed it${score}.</div>`);
+    else
+      parts.push(`<div class="email-banner note">The last assistant query retrieved this email with no filter in place.</div>`);
+  }
+  if (e.poisoned && document.body.classList.contains("reveal"))
+    parts.push(`<div class="email-banner blocked">⚠ This email contains an injection.${e.note ? " " + e.note : ""}</div>`);
+  else if (e.note && document.body.classList.contains("reveal"))
+    parts.push(`<div class="email-banner note">${e.note}</div>`);
+  if (e.assistantSent)
+    parts.push(`<div class="email-banner blocked">The assistant tried to send this message. In this demo nothing is ever delivered.</div>`);
+  if (parts.length) evBody.insertAdjacentHTML("beforebegin", parts.join(""));
+}
+
 function openEmail(id) {
   const e = EMAILS.find(m => m.id === id);
   if (!e) return;
@@ -198,6 +302,7 @@ function openEmail(id) {
   evBody.textContent    = e.body;
   evAvatar.textContent  = e.from[0].toUpperCase();
   evAvatar.style.background = colorFor(e.from);
+  renderBanner(e);
   syncStarBtn();
 
   if (isMobile()) document.body.classList.add("reading-open");
@@ -379,7 +484,9 @@ composeModal.addEventListener("click", e => {
 const DEFENSE_LABELS = {
   none: "Defense: None (baseline)",
   classifier: "Defense: Classifier (DeBERTa)",
-  slm: "Defense: SLM Guardrail"
+  slm: "Defense: SLM Guardrail (Gemma judge)",
+  llamaguard: "Defense: Llama-Guard-3-1B",
+  pg2: "Defense: Prompt Guard 2 (reference)"
 };
 
 defenseMode.addEventListener("change", () => {
@@ -463,6 +570,28 @@ function mockReply(message, defense) {
 }
 
 /* ---------- Chat submit ---------- */
+const subjectOf = id => (EMAILS.find(m => m.id === id)?.subject || `#${id}`).slice(0, 34);
+
+function applyVerdicts(retrieved) {
+  const byId = Object.fromEntries((retrieved || []).map(r => [r.id, r]));
+  EMAILS.forEach(m => { m.verdict = byId[m.id] || null; });
+  renderList(searchInput.value);
+  const open = EMAILS.find(m => m.id === selectedId);
+  if (open) renderBanner(open);
+}
+
+function recordAssistantSends(calls) {
+  (calls || []).forEach(c => {
+    EMAILS.unshift({
+      id: nextId++, from: "Assistant (demo)", addr: "assistant@acme-corp.com",
+      subject: `To ${c.to || "?"}${c.source === "document" ? " (address taken from an email: hijack)" : c.source === "invented" ? " (address invented by the model)" : ""}`,
+      body: c.body || "(no body)", time: nowTime(), unread: false, poisoned: false, starred: false,
+      folder: "sent", assistantSent: true, draftTo: c.to
+    });
+  });
+  updateCounts();
+}
+
 chatForm.addEventListener("submit", async e => {
   e.preventDefault();
   const text = chatInput.value.trim();
@@ -477,10 +606,20 @@ chatForm.addEventListener("submit", async e => {
 
   const badges = (data.retrieved || [])
     .map(r =>
-      r.verdict === "blocked" ? `<span class="badge blocked">✖ email #${r.id} blocked</span>` :
-      r.verdict === "clean"   ? `<span class="badge clean">✓ email #${r.id} clean</span>` : ""
+      r.verdict === "blocked" ? `<span class="badge blocked">✖ “${subjectOf(r.id)}” blocked</span>` :
+      r.verdict === "clean"   ? `<span class="badge clean">✓ “${subjectOf(r.id)}” clean</span>` : ""
     ).join(" ");
-  addBotMessage(data.reply, `<span>${data.latency_ms} ms</span> ${badges}`);
+  const sends = (data.tool_calls || []).map(c =>
+    c.source === "document"
+      ? `<div class="sent-warning">⚠ Hijacked: the assistant called <b>send_email</b> → <b>${(c.to || "?").replace(/</g, "&lt;")}</b>, an address taken from an email it read. Nothing was delivered. See Sent.</div>`
+      : c.source === "invented"
+        ? `<div class="email-banner note" style="margin-top:8px">The assistant also emailed <b>${(c.to || "?").replace(/</g, "&lt;")}</b>, an address nobody gave it. Nothing was delivered. See Sent.</div>`
+        : "").join("");
+  const dms = data.defense_ms != null ? ` <span>defence ${data.defense_ms} ms</span>` : "";
+  addBotMessage(data.reply, `<span>${data.latency_ms} ms</span>${dms} ${badges}${sends}`);
+
+  applyVerdicts(data.retrieved);
+  recordAssistantSends(data.tool_calls);
 
   sendBtn.disabled = false;
   chatInput.focus();
@@ -489,9 +628,77 @@ chatForm.addEventListener("submit", async e => {
 /* ---------- Suggestion chips ---------- */
 suggestions.addEventListener("click", e => {
   if (!e.target.classList.contains("chip")) return;
-  chatInput.value = e.target.textContent;
+  chatInput.value = e.target.dataset.full || e.target.textContent;
   chatForm.requestSubmit();
 });
+
+/* ---------- Demo tools: real attacks from the datasets ---------- */
+function splitEmail(text) {
+  let m = text.match(/^SUBJECT:\s*([\s\S]*?)\|CONTENT:\s*([\s\S]*)$/);
+  if (m) return [m[1].trim(), m[2].trim()];
+  m = text.match(/^Subject of the email:\s*([\s\S]*?)\.\s{2,}Body:\s*([\s\S]*)$/);
+  if (m) return [m[1].trim(), m[2].trim()];
+  return ["(no subject)", text.trim()];
+}
+
+const RANDOM_SENDERS = [["Jordan Blake", "jordan.blake@partner-mail.com"], ["Noor Hassan", "noor.hassan@clientco.io"],
+  ["Mikael Berg", "m.berg@supplyline.eu"], ["Ines Duarte", "ines.duarte@brightpath.org"]];
+
+function addExtraEmail(x) {
+  EMAILS.unshift({
+    id: nextId++, from: x.from, addr: x.addr, subject: x.subject, body: x.body, time: "Just now",
+    unread: true, poisoned: x.poisoned, starred: false, folder: "inbox", note: x.note
+  });
+  switchFolder("inbox");
+  renderList(searchInput.value);
+  addChip(`Summarize the email about ${x.subject}`);
+}
+
+function addChip(text) {
+  if ([...suggestions.children].some(c => c.textContent === text)) return;
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "chip"; b.textContent = text.length > 52 ? text.slice(0, 50) + "…" : text;
+  b.title = text; b.dataset.full = text;
+  suggestions.appendChild(b);
+}
+
+async function addRandomFromDataset(params, poisoned, note) {
+  try {
+    const res = await fetch(`/api/samples?${params}&n=1`);
+    const row = (await res.json()).rows[0];
+    const [subject, body] = splitEmail(row.text);
+    const [from, addr] = RANDOM_SENDERS[Math.floor(Math.random() * RANDOM_SENDERS.length)];
+    addExtraEmail({ from, addr, subject, body, poisoned, note: `${note} Source: ${row.id}.` });
+    showToast("Email added to the inbox. Ask the assistant to summarise it.");
+  } catch { showToast("Backend not reachable"); }
+}
+
+document.getElementById("addAttackBtn").addEventListener("click",
+  () => addRandomFromDataset("set=testB_llmail&label=1", true, "Real attack from the LLMail-Inject dataset."));
+document.getElementById("addBenignBtn").addEventListener("click",
+  () => addRandomFromDataset("set=testA_bipia_email&kind=hard_negative", false,
+    "Harmless email that ends with an instruction meant for people."));
+document.getElementById("resetMailBtn").addEventListener("click", () => {
+  EMAILS.length = 0;
+  INITIAL_EMAILS.forEach(m => EMAILS.push(JSON.parse(JSON.stringify(m))));
+  if (window.SR && SR.data) mailAddExtras(SR.data.mailbox_extra);
+  [...suggestions.querySelectorAll(".chip[data-full]")].forEach(c => c.remove());
+  switchFolder("inbox");
+  showToast("Mailbox reset");
+});
+
+/* Called once the showcase data has loaded: adds the real attack emails from the evaluation. */
+function mailAddExtras(extras) {
+  (extras || []).forEach(x => {
+    if (EMAILS.some(m => m.subject === x.subject && m.addr === x.addr)) return;
+    EMAILS.splice(2, 0, {
+      id: nextId++, from: x.from_, addr: x.addr, subject: x.subject, body: x.body, time: "Aug 31",
+      unread: true, poisoned: x.poisoned, starred: false, folder: "inbox", note: x.note
+    });
+    addChip(x.query);
+  });
+  renderList(searchInput.value);
+}
 
 /* ---------- Chat overlay (≤1080px) ---------- */
 chatFab.addEventListener("click", () => document.body.classList.add("chat-open"));

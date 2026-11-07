@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="views.css">
 </head>
 <body>
 
@@ -27,20 +28,36 @@
     </div>
 
     <div class="topbar-right">
+      <button class="reveal-btn" id="revealBtn" type="button" aria-pressed="false"
+              title="Presenter mode: mark which emails, pages and tables contain an injection">👁 Reveal attacks</button>
       <div class="defense-select" title="RAG defense mode">
         🛡 <label for="defenseMode">Defense</label>
         <select id="defenseMode">
           <option value="none">None (baseline)</option>
           <option value="classifier">Classifier (DeBERTa)</option>
-          <option value="slm">SLM Guardrail</option>
+          <option value="slm">SLM Guardrail (Gemma judge)</option>
+          <option value="llamaguard">Llama-Guard-3-1B</option>
+          <option value="pg2">Prompt Guard 2 (reference)</option>
         </select>
       </div>
       <div class="avatar" id="avatarBtn" title="Account">D</div>
     </div>
   </header>
 
+  <!-- ===== View tabs ===== -->
+  <nav class="viewtabs" id="viewTabs" aria-label="Sections">
+    <button type="button" class="vtab active" data-view="mail">✉ Mail assistant</button>
+    <button type="button" class="vtab" data-view="web">🌐 Web pages</button>
+    <button type="button" class="vtab" data-view="docs">📊 Documents</button>
+    <button type="button" class="vtab" data-view="showcase">🎬 Showcase</button>
+    <button type="button" class="vtab" data-view="detector">🔎 Detector</button>
+    <button type="button" class="vtab" data-view="results">📈 Results</button>
+    <button type="button" class="vtab" data-view="project">📘 Project</button>
+    <span class="vtab-status" id="serverStatus" title="Backend status">connecting…</span>
+  </nav>
+
   <!-- ===== Layout ===== -->
-  <div class="layout">
+  <div class="layout view" id="view-mail">
 
     <!-- Sidebar -->
     <aside class="sidebar">
@@ -52,6 +69,12 @@
         <li class="nav-item" data-folder="drafts">📝 <span>Drafts</span> <em id="draftsCount"></em></li>
         <li class="nav-item" data-folder="trash">🗑 <span>Trash</span> <em id="trashCount"></em></li>
       </ul>
+      <div class="demo-tools" id="demoTools">
+        <div class="demo-tools-title">Demo tools</div>
+        <button type="button" class="ghost-btn tool-btn" id="addAttackBtn">＋ Add a random real attack email</button>
+        <button type="button" class="ghost-btn tool-btn" id="addBenignBtn">＋ Add a harmless “please do X” email</button>
+        <button type="button" class="ghost-btn tool-btn" id="resetMailBtn">↺ Reset mailbox</button>
+      </div>
     </aside>
 
     <!-- Email list -->
@@ -124,7 +147,57 @@
     </aside>
   </div>
 
-  <!-- Floating chat button (≤1080px) -->
+  <!-- ===== Web pages ===== -->
+  <main class="view hidden" id="view-web">
+    <div class="lab">
+      <aside class="lab-list">
+        <h2>Web pages</h2>
+        <p class="hint">Pages an agent might browse. Open one, read what a person sees, then what the assistant is given.</p>
+        <ul class="pick-list" id="webList"></ul>
+      </aside>
+      <section class="lab-main" id="webMain"></section>
+    </div>
+  </main>
+
+  <!-- ===== Documents (tables) ===== -->
+  <main class="view hidden" id="view-docs">
+    <div class="lab">
+      <aside class="lab-list">
+        <h2>Documents</h2>
+        <p class="hint">Tables with a question about them (from the BIPIA table benchmark).</p>
+        <ul class="pick-list" id="docList"></ul>
+      </aside>
+      <section class="lab-main" id="docMain"></section>
+    </div>
+  </main>
+
+  <!-- ===== Showcase ===== -->
+  <main class="view hidden" id="view-showcase">
+    <div class="lab showcase">
+      <aside class="lab-list">
+        <h2>Scripted tour</h2>
+        <p class="hint">Real cases from the evaluation. Each runs live through four setups so you can compare it with what happened in the test run.</p>
+        <ul class="pick-list" id="scnList"></ul>
+      </aside>
+      <section class="lab-main" id="scnMain"></section>
+    </div>
+  </main>
+
+  <!-- ===== Detector ===== -->
+  <main class="view hidden" id="view-detector">
+    <div class="page" id="detectorMain"></div>
+  </main>
+
+  <!-- ===== Results ===== -->
+  <main class="view hidden" id="view-results">
+    <div class="page" id="resultsMain"></div>
+  </main>
+
+  <!-- ===== Project ===== -->
+  <main class="view hidden" id="view-project">
+    <div class="page" id="projectMain"></div>
+  </main>
+
   <button class="chat-fab" id="chatFab" title="Open assistant">🤖</button>
 
   <!-- Mobile drawer scrim -->
@@ -151,5 +224,8 @@
   </div>
 
   <script src="app.js"></script>
+  <script src="views-core.js"></script>
+  <script src="views-lab.js"></script>
+  <script src="views-results.js"></script>
 </body>
 </html>
