@@ -4,3 +4,14 @@
 *.ot
 *.gguf
 **/models/
+
+# Local tooling and generated data
+tools/llama.cpp/bin/
+tools/llama.cpp/*.zip
+data/
+__pycache__/
+.venv/
+runs/
+
+*.log
+*.err

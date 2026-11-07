@@ -424,7 +424,11 @@ async function askAssistant(message) {
     const res = await fetch(API_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, defense })
+      body: JSON.stringify({
+        message, defense,
+        emails: EMAILS.filter(e => e.folder !== "trash" && e.folder !== "sent" && e.folder !== "drafts")
+                      .map(e => ({ id: e.id, sender: `${e.from} <${e.addr}>`, subject: e.subject, body: e.body }))
+      })
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
