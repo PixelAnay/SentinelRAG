@@ -85,7 +85,7 @@ SR.init.overview = async function () {
   const asr = k => rate(C[k].asrB);
   host.innerHTML = `<div class="page overview">
     <header class="ov-head">
-      <h1>Can a small local filter stop an email assistant from being hijacked?</h1>
+      <h1>Can a small local filter stop an AI assistant from being hijacked?</h1>
       <p class="lede">An assistant that reads email, web pages and documents also reads instructions an attacker plants in them.
         SentinelRAG puts a filter between retrieval and the model and compares three setups: no filter, a fine-tuned DeBERTa classifier,
         and a prompted Gemma 4 guardrail. Llama-Guard-3-1B and Meta's Prompt Guard 2 are scored alongside for reference.
