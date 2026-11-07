@@ -3,228 +3,118 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SentinelRAG — Company Mail</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <title>SentinelRAG: defending an email assistant against indirect prompt injection</title>
+  <link rel="preload" href="fonts/source-serif-4-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="views.css">
 </head>
 <body>
+  <a class="skip" href="#main">Skip to content</a>
 
-  <!-- ===== Top bar ===== -->
-  <header class="topbar">
-    <div class="topbar-left">
-      <button class="icon-btn" id="menuBtn" title="Toggle menu">☰</button>
-      <div class="logo">
-        <span class="logo-mark">◆</span>
-        <div class="logo-text">SentinelRAG <span>Mail</span></div>
-      </div>
-    </div>
-
-    <div class="searchbar">
-      <span class="search-icon">🔍</span>
-      <input type="text" id="searchInput" placeholder="Search mail" autocomplete="off">
-      <button class="icon-btn clear-btn" id="clearSearch" title="Clear search">✕</button>
-    </div>
-
-    <div class="topbar-right">
-      <button class="reveal-btn" id="revealBtn" type="button" aria-pressed="false"
-              title="Presenter mode: mark which emails, pages and tables contain an injection">👁 Reveal attacks</button>
-      <div class="defense-select" title="RAG defense mode">
-        🛡 <label for="defenseMode">Defense</label>
-        <select id="defenseMode">
-          <option value="none">None (baseline)</option>
-          <option value="classifier">Classifier (DeBERTa)</option>
-          <option value="slm">SLM Guardrail (Gemma judge)</option>
-          <option value="llamaguard">Llama-Guard-3-1B</option>
-          <option value="pg2">Prompt Guard 2 (reference)</option>
-        </select>
-      </div>
-      <div class="avatar" id="avatarBtn" title="Account">D</div>
+  <header class="mast">
+    <a class="wordmark" href="#overview">SentinelRAG<span>prompt injection defences, compared</span></a>
+    <nav class="sections" aria-label="Sections">
+      <a href="#overview" data-view="overview">Overview</a>
+      <a href="#mailbox" data-view="mailbox">Mailbox</a>
+      <a href="#web" data-view="web">Web pages</a>
+      <a href="#documents" data-view="documents">Documents</a>
+      <a href="#cases" data-view="cases">Case studies</a>
+      <a href="#detector" data-view="detector">Detector</a>
+      <a href="#results" data-view="results">Results</a>
+      <a href="#method" data-view="method">Method</a>
+    </nav>
+    <div class="mast-tools">
+      <span class="status" id="serverStatus" role="status">checking backend</span>
+      <button type="button" class="switch" id="revealBtn" aria-pressed="false"
+              title="Presenter switch: mark every email, page and table that holds an injection"><i aria-hidden="true"></i>Show attacks</button>
     </div>
   </header>
 
-  <!-- ===== View tabs ===== -->
-  <nav class="viewtabs" id="viewTabs" aria-label="Sections">
-    <button type="button" class="vtab active" data-view="mail">✉ Mail assistant</button>
-    <button type="button" class="vtab" data-view="web">🌐 Web pages</button>
-    <button type="button" class="vtab" data-view="docs">📊 Documents</button>
-    <button type="button" class="vtab" data-view="showcase">🎬 Showcase</button>
-    <button type="button" class="vtab" data-view="detector">🔎 Detector</button>
-    <button type="button" class="vtab" data-view="results">📈 Results</button>
-    <button type="button" class="vtab" data-view="project">📘 Project</button>
-    <span class="vtab-status" id="serverStatus" title="Backend status">connecting…</span>
-  </nav>
+  <main id="main" tabindex="-1">
+    <section class="view" id="view-overview" aria-label="Overview"></section>
 
-  <!-- ===== Layout ===== -->
-  <div class="layout view" id="view-mail">
-
-    <!-- Sidebar -->
-    <aside class="sidebar">
-      <button class="compose-btn" id="composeBtn">✏️ <span>Compose</span></button>
-      <ul class="nav-list">
-        <li class="nav-item active" data-folder="inbox">📥 <span>Inbox</span> <em id="inboxCount"></em></li>
-        <li class="nav-item" data-folder="starred">⭐ <span>Starred</span> <em id="starredCount"></em></li>
-        <li class="nav-item" data-folder="sent">📤 <span>Sent</span> <em id="sentCount"></em></li>
-        <li class="nav-item" data-folder="drafts">📝 <span>Drafts</span> <em id="draftsCount"></em></li>
-        <li class="nav-item" data-folder="trash">🗑 <span>Trash</span> <em id="trashCount"></em></li>
-      </ul>
-      <div class="demo-tools" id="demoTools">
-        <div class="demo-tools-title">Demo tools</div>
-        <button type="button" class="ghost-btn tool-btn" id="addAttackBtn">＋ Add a random real attack email</button>
-        <button type="button" class="ghost-btn tool-btn" id="addBenignBtn">＋ Add a harmless “please do X” email</button>
-        <button type="button" class="ghost-btn tool-btn" id="resetMailBtn">↺ Reset mailbox</button>
-      </div>
-    </aside>
-
-    <!-- Email list -->
-    <section class="mail-list-pane">
-      <div class="mail-list-header">
-        <span id="folderTitle">Inbox</span>
-        <button class="icon-btn" id="refreshBtn" title="Refresh">⟳</button>
-      </div>
-      <ul class="mail-list" id="mailList"></ul>
-    </section>
-
-    <!-- Reading pane -->
-    <section class="reading-pane">
-      <div class="empty-state" id="emptyState">
-        <div class="empty-icon">📧</div>
-        <p>Select an email to read it</p>
-      </div>
-
-      <div class="email-view hidden" id="emailView">
-        <div class="email-toolbar">
-          <button class="icon-btn back-btn" id="backBtn" title="Back to list">←</button>
-          <button class="icon-btn" id="starBtn" title="Star">☆</button>
-          <button class="icon-btn" id="unreadBtn" title="Mark as unread">📩</button>
-          <button class="icon-btn" id="deleteBtn" title="Move to Trash">🗑</button>
-        </div>
-        <div class="email-view-header">
-          <h1 id="evSubject"></h1>
-        </div>
-        <div class="email-meta">
-          <div class="sender-avatar" id="evAvatar"></div>
-          <div class="sender-info">
-            <span class="sender-name" id="evFrom"></span>
-            <span class="sender-addr" id="evAddr"></span>
+    <!-- ===== Mailbox ===== -->
+    <section class="view" id="view-mailbox" aria-label="Mailbox" hidden>
+      <div class="mailbox">
+        <div class="mb-list">
+          <div class="mb-head">
+            <div class="folders" role="tablist" aria-label="Folders">
+              <button type="button" role="tab" data-folder="inbox" aria-selected="true">Inbox <span class="num" id="cntInbox"></span></button>
+              <button type="button" role="tab" data-folder="sent" aria-selected="false">Sent by assistant <span class="num" id="cntSent"></span></button>
+              <button type="button" role="tab" data-folder="trash" aria-selected="false">Trash <span class="num" id="cntTrash"></span></button>
+            </div>
+            <div class="mb-search">
+              <label class="sr-only" for="searchInput">Search mail</label>
+              <input class="field" type="search" id="searchInput" placeholder="Search sender, subject or text" autocomplete="off">
+            </div>
           </div>
-          <span class="email-date" id="evDate"></span>
+          <ul class="mail-list" id="mailList" aria-label="Messages"></ul>
+          <div class="mb-foot">
+            <span class="label">Add to the inbox</span>
+            <div class="mb-foot-row">
+              <button type="button" class="btn quiet sm" id="addAttackBtn" title="A random attack email from the LLMail-Inject test set">Real attack</button>
+              <button type="button" class="btn quiet sm" id="addBenignBtn" title="A harmless email from the hard-negative set: it asks a person to do something">Harmless request</button>
+              <button type="button" class="btn quiet sm" id="writeBtn">Write one</button>
+              <button type="button" class="linkbtn" id="resetMailBtn">Reset</button>
+            </div>
+          </div>
         </div>
-        <div class="email-body" id="evBody"></div>
+
+        <article class="mb-reader" id="reader" aria-live="polite"></article>
+
+        <aside class="mb-assist" aria-label="Assistant">
+          <div class="as-head">
+            <h2>Assistant</h2>
+            <p>Gemma 4 E2B. It retrieves the five closest emails and may call <code>send_email</code>. Nothing is ever delivered.</p>
+            <fieldset class="defpick" id="defPick">
+              <legend class="label">Filter on retrieved emails</legend>
+            </fieldset>
+          </div>
+          <div class="as-log" id="chatLog" aria-live="polite"></div>
+          <div class="as-ask">
+            <div class="as-sugg" id="chatSuggestions" aria-label="Suggested questions"></div>
+            <form id="chatForm" class="as-form">
+              <label class="sr-only" for="chatInput">Question for the assistant</label>
+              <input class="field" id="chatInput" placeholder="Ask about the inbox" autocomplete="off">
+              <button type="submit" class="btn" id="sendBtn">Ask</button>
+            </form>
+          </div>
+        </aside>
       </div>
     </section>
 
-    <!-- AI assistant -->
-    <aside class="chat-pane">
-      <div class="chat-header">
-        <div class="chat-title">
-          <div class="bot-avatar">🤖</div>
-          <div>
-            <strong>AI Assistant</strong>
-            <span class="chat-status" id="chatStatus">Defense: None (baseline)</span>
-          </div>
-        </div>
-        <button class="icon-btn chat-close" id="chatClose" title="Close">✕</button>
+    <section class="view" id="view-web" aria-label="Web pages" hidden></section>
+    <section class="view" id="view-documents" aria-label="Documents" hidden></section>
+    <section class="view" id="view-cases" aria-label="Case studies" hidden></section>
+    <section class="view" id="view-detector" aria-label="Detector" hidden></section>
+    <section class="view" id="view-results" aria-label="Results" hidden></section>
+    <section class="view" id="view-method" aria-label="Method" hidden></section>
+  </main>
+
+  <!-- ===== Write an incoming email ===== -->
+  <dialog class="sheet-dialog" id="writeDialog" aria-labelledby="writeTitle">
+    <form method="dialog" id="writeForm">
+      <h2 id="writeTitle">Write an incoming email</h2>
+      <p class="hint">It lands in the inbox like any other message. Add your own injection and see which filter notices.</p>
+      <div class="two">
+        <div><label class="label" for="wFrom">Sender name</label><input class="field" id="wFrom" required placeholder="Sender name"></div>
+        <div><label class="label" for="wAddr">Sender address</label><input class="field" id="wAddr" type="email" required placeholder="name@example.com"></div>
       </div>
-
-      <div class="chat-messages" id="chatMessages">
-        <div class="msg bot">
-          <div class="msg-bubble">Hi! I can answer questions about your inbox — try "Summarise my unread emails" or "What did finance say about the Q3 budget?"</div>
-        </div>
+      <label class="label" for="wSubject">Subject</label>
+      <input class="field" id="wSubject" required placeholder="Subject line">
+      <label class="label" for="wBody">Body</label>
+      <textarea class="field" id="wBody" required placeholder="Email text. To test a filter, include an instruction aimed at the assistant."></textarea>
+      <label class="check"><input type="checkbox" id="wPoison"> This email contains an injection (only used by the presenter switch)</label>
+      <div class="dialog-actions">
+        <button type="button" class="btn quiet" id="writeCancel">Cancel</button>
+        <button type="submit" class="btn" value="ok">Add to inbox</button>
       </div>
+    </form>
+  </dialog>
 
-      <div class="chat-suggestions" id="chatSuggestions">
-        <button type="button" class="chip">Summarise unread emails</button>
-        <button type="button" class="chip">Q3 budget status?</button>
-        <button type="button" class="chip">Any action items for me?</button>
-      </div>
-
-      <form class="chat-input-row" id="chatForm">
-        <input type="text" id="chatInput" placeholder="Ask about your inbox…" autocomplete="off">
-        <button type="submit" class="send-btn" id="sendBtn">➤</button>
-      </form>
-    </aside>
-  </div>
-
-  <!-- ===== Web pages ===== -->
-  <main class="view hidden" id="view-web">
-    <div class="lab">
-      <aside class="lab-list">
-        <h2>Web pages</h2>
-        <p class="hint">Pages an agent might browse. Open one, read what a person sees, then what the assistant is given.</p>
-        <ul class="pick-list" id="webList"></ul>
-      </aside>
-      <section class="lab-main" id="webMain"></section>
-    </div>
-  </main>
-
-  <!-- ===== Documents (tables) ===== -->
-  <main class="view hidden" id="view-docs">
-    <div class="lab">
-      <aside class="lab-list">
-        <h2>Documents</h2>
-        <p class="hint">Tables with a question about them (from the BIPIA table benchmark).</p>
-        <ul class="pick-list" id="docList"></ul>
-      </aside>
-      <section class="lab-main" id="docMain"></section>
-    </div>
-  </main>
-
-  <!-- ===== Showcase ===== -->
-  <main class="view hidden" id="view-showcase">
-    <div class="lab showcase">
-      <aside class="lab-list">
-        <h2>Scripted tour</h2>
-        <p class="hint">Real cases from the evaluation. Each runs live through four setups so you can compare it with what happened in the test run.</p>
-        <ul class="pick-list" id="scnList"></ul>
-      </aside>
-      <section class="lab-main" id="scnMain"></section>
-    </div>
-  </main>
-
-  <!-- ===== Detector ===== -->
-  <main class="view hidden" id="view-detector">
-    <div class="page" id="detectorMain"></div>
-  </main>
-
-  <!-- ===== Results ===== -->
-  <main class="view hidden" id="view-results">
-    <div class="page" id="resultsMain"></div>
-  </main>
-
-  <!-- ===== Project ===== -->
-  <main class="view hidden" id="view-project">
-    <div class="page" id="projectMain"></div>
-  </main>
-
-  <button class="chat-fab" id="chatFab" title="Open assistant">🤖</button>
-
-  <!-- Mobile drawer scrim -->
-  <div class="scrim" id="scrim"></div>
-
-  <!-- ===== Compose modal ===== -->
-  <div class="modal-overlay hidden" id="composeModal">
-    <div class="compose-card">
-      <div class="compose-header">
-        <span>New Message</span>
-        <button type="button" class="icon-btn" id="composeClose" title="Close">✕</button>
-      </div>
-      <form id="composeForm">
-        <input type="email" id="composeTo" placeholder="To" autocomplete="off">
-        <input type="text" id="composeSubject" placeholder="Subject" autocomplete="off">
-        <textarea id="composeBody" placeholder="Write your message…"></textarea>
-        <div class="compose-actions">
-          <button type="submit" class="primary-btn">Send</button>
-          <button type="button" class="ghost-btn" id="saveDraftBtn">Save draft</button>
-          <button type="button" class="ghost-btn discard-btn" id="discardBtn" title="Discard">🗑</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <script src="app.js"></script>
   <script src="views-core.js"></script>
+  <script src="app.js"></script>
   <script src="views-lab.js"></script>
   <script src="views-results.js"></script>
 </body>

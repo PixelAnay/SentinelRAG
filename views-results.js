@@ -1,222 +1,287 @@
 /* =========================================================
-   Results and Project tabs. Every number comes from showcase/results.json.
+   Overview, Results and Method. Every number on these pages is
+   read from showcase/results.json (built by scripts/build_showcase.py).
 ========================================================= */
 "use strict";
 
-const DET = {
-  classifier:    { name: "Fine-tuned DeBERTa",   color: "var(--c-classifier)" },
-  slm_judge:     { name: "Gemma 4 judge",        color: "var(--c-slm)" },
-  llamaguard:    { name: "Llama-Guard-3-1B",     color: "var(--c-llamaguard)" },
-  prompt_guard2: { name: "Prompt Guard 2 (reference)", color: "var(--c-pg2)" }
-};
-const E2E = {
-  none:       { name: "No defence",         color: "var(--c-none)" },
-  classifier: DET.classifier, slm_judge: DET.slm_judge, llamaguard: DET.llamaguard
-};
-const SETS = [
-  ["testA_bipia_email", "A: BIPIA emails (held-out wording)"],
-  ["testB_llmail", "B: LLMail-Inject (never trained on)"],
-  ["testC_table", "C: tables"],
-  ["testD_web", "D: web pages (HTML)"]
-];
-const SEEDS = [["classifier", "Seed 13", "#0b57d0"], ["classifier_s21", "Seed 21", "#5b8def"], ["classifier_s42", "Seed 42", "#9bb9f5"]];
+const SHORT = { none: "No filter", classifier: "DeBERTa", slm_judge: "Gemma judge", llamaguard: "Llama-Guard", prompt_guard2: "Prompt Guard 2" };
+const KEY2DEF = { none: "none", classifier: "classifier", slm_judge: "slm", llamaguard: "llamaguard", prompt_guard2: "pg2" };
+const DETS = ["classifier", "slm_judge", "llamaguard", "prompt_guard2"];
+const E2ES = ["none", "classifier", "slm_judge", "llamaguard"];
+const SETS = [["testA_bipia_email", "A", "BIPIA emails, held-out wording"], ["testB_llmail", "B", "LLMail-Inject, never trained on"],
+              ["testC_table", "C", "Tables"], ["testD_web", "D", "Web pages (HTML)"]];
+const SEEDS = [["classifier", "Seed 13"], ["classifier_s21", "Seed 21"], ["classifier_s42", "Seed 42"]];
+const colorOf = k => SR.DEF[KEY2DEF[k]].color;
+const refOf = k => !!SR.DEF[KEY2DEF[k]].ref;
 
-const legend = series => `<div class="legend">${series.map(s => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join("")}</div>`;
+let figN = 0;
+const fig = (title, body, reading = "") =>
+  `<figure class="figure"><figcaption><span class="fig-n">Figure ${++figN}.</span> ${title}</figcaption>${body}${reading ? `<p class="reading">${reading}</p>` : ""}</figure>`;
 
-function bar(b, max, fmt) {
-  const w = Math.min(100, (b.v / max) * 100);
-  const wh = b.lo != null ? `<i class="whisk" style="left:${(b.lo / max) * 100}%;width:${Math.max(0.6, ((b.hi - b.lo) / max) * 100)}%"></i>` : "";
-  return `<div class="bar" title="${esc(b.title || "")}"><div class="track"><div class="fill" style="width:${w}%;--c:${b.color}"></div>${wh}</div><div class="val">${fmt(b.v)}</div></div>`;
+/* bars: groups = [{ label, sub, bars: [{ key, name, v, lo, hi, title, color, ref }] }] */
+function bars(groups, { max = 1, fmt = v => pct(v, 1), axis = "%" } = {}) {
+  const ticks = axis === "%" ? [0, .25, .5, .75, 1].map(t => [t * max, `${Math.round(t * max * 100)}%`])
+    : [0, .25, .5, .75, 1].map(t => [t * max, `${Math.round(t * max)}`]);
+  const tickHTML = ticks.map(([v, l]) => `<span style="left:${(v / max) * 100}%">${l}</span>`).join("");
+  return `<div class="bars">${groups.map(g => `<div class="b-group">
+      <p class="b-glabel">${esc(g.label)}${g.sub ? `<small>${esc(g.sub)}</small>` : ""}</p>
+      ${g.bars.map(b => {
+        const w = Math.min(100, (b.v / max) * 100);
+        const wh = b.lo != null ? `<i class="whisk" style="left:${(b.lo / max) * 100}%;width:${Math.max(.4, ((b.hi - b.lo) / max) * 100)}%"></i>` : "";
+        return `<div class="b-row" title="${esc(b.title || "")}"><span class="b-name">${esc(b.name)}</span>
+          <span class="b-track"><i class="b-fill${b.ref ? " ref" : ""}" style="width:${w}%;--c:${b.color}"></i>${wh}</span>
+          <span class="b-val num">${fmt(b.v)}</span></div>`;
+      }).join("")}</div>`).join("")}
+    <div class="b-axis" aria-hidden="true"><span></span><span class="b-ticks">${tickHTML}</span><span></span></div></div>`;
 }
-function chart(groups, { max = 1, fmt = v => pct(v, 1) } = {}) {
-  return `<div class="chart">${groups.map(g => `<div class="cgroup"><div class="lbl">${esc(g.label)}</div><div>${g.bars.map(b => bar(b, max, fmt)).join("")}</div></div>`).join("")}</div>`;
-}
-const cnt = (c, color, title) => { const w = wilson(c.k, c.n); return { v: w ? w.p : 0, lo: w && w.lo, hi: w && w.hi, color, title: `${c.k} of ${c.n}. 95% interval ${pct(w.lo)} to ${pct(w.hi)}` }; };
-const heat = (v, goodHigh = true) => { const g = goodHigh ? v : 1 - v; return `background:hsl(${Math.round(g * 118)},62%,${88 - Math.round(g * 6)}%)`; };
+const countBar = (key, c) => {
+  const w = wilson(c.k, c.n);
+  return { key, name: SHORT[key], v: w.p, lo: w.lo, hi: w.hi, color: colorOf(key), title: `${c.k} of ${c.n}; 95% interval ${pct(w.lo)} to ${pct(w.hi)}` };
+};
+const rate = c => c.k / c.n;
 
-SR.init.results = async function () {
-  const host = $("#resultsMain");
-  host.innerHTML = `<h1>Results</h1><p class="lead"><span class="spin"></span>Loading…</p>`;
-  let R;
-  try { R = SR.results = await api("/api/results"); }
-  catch (e) { host.innerHTML = `<h1>Results</h1><div class="takeaway warn">${esc(e.message)}</div>`; return; }
+async function loadResults(host) {
+  if (SR.results) return SR.results;
+  host.innerHTML = stateBox("Loading the measurements", `<span class="spin"></span>Reading showcase/results.json`);
+  try { return (SR.results = await api("/api/results")); }
+  catch (e) { host.innerHTML = `<div class="page">${stateBox("The results did not load", esc(e.message), "error")}</div>`; return null; }
+}
+
+/* ---------- Overview ---------- */
+function tradeoffPlot(C) {
+  const pts = E2ES.map(k => {
+    const x = wilson(C[k].blockedB.k, C[k].blockedB.n), y = wilson(C[k].hardNegBlocked.k, C[k].hardNegBlocked.n);
+    return { k, x, y };
+  });
+  const W = 520, H = 360, L = 56, B = 44, T = 16, R = 20, pw = W - L - R, ph = H - T - B;
+  const sx = v => L + v * pw, sy = v => T + (1 - v) * ph;
+  const grid = [0, .25, .5, .75, 1].map(t => `
+    <line x1="${sx(t)}" y1="${T}" x2="${sx(t)}" y2="${T + ph}" class="g"/><text x="${sx(t)}" y="${T + ph + 18}" class="tk" text-anchor="middle">${t * 100}%</text>
+    <line x1="${L}" y1="${sy(t)}" x2="${L + pw}" y2="${sy(t)}" class="g"/><text x="${L - 8}" y="${sy(t) + 4}" class="tk" text-anchor="end">${t * 100}%</text>`).join("");
+  const LABEL_POS = { none: [10, -10, "start"], classifier: [12, -12, "start"], slm_judge: [-12, -14, "end"], llamaguard: [-12, 22, "end"] };
+  const dots = pts.map(p => {
+    const [dx, dy, anchor] = LABEL_POS[p.k], cx = sx(p.x.p), cy = sy(p.y.p);
+    return `<g class="pt" style="--c:${colorOf(p.k)}">
+      <line x1="${sx(p.x.lo)}" y1="${cy}" x2="${sx(p.x.hi)}" y2="${cy}" class="wh"/>
+      <line x1="${cx}" y1="${sy(p.y.lo)}" x2="${cx}" y2="${sy(p.y.hi)}" class="wh"/>
+      <circle cx="${cx}" cy="${cy}" r="6"/>
+      <text x="${cx + dx}" y="${cy + dy}" text-anchor="${anchor}" class="pl">${SHORT[p.k]}</text>
+      <title>${SHORT[p.k]}: blocks ${p.x.k} of ${p.x.n} attacks, wrongly blocks ${p.y.k} of ${p.y.n} harmless requests</title></g>`;
+  }).join("");
+  return `<svg class="plot" viewBox="0 0 ${W} ${H}" role="img" aria-label="Scatter plot of attacks blocked against harmless emails wrongly blocked, one point per defence">
+    ${grid}
+    <text x="${L + pw - 6}" y="${T + ph - 10}" text-anchor="end" class="corner">better</text>
+    ${dots}
+    <text x="${L + pw / 2}" y="${H - 4}" text-anchor="middle" class="ax">Attacks blocked, LLMail set B</text>
+    <text transform="translate(14 ${T + ph / 2}) rotate(-90)" text-anchor="middle" class="ax">Harmless requests wrongly blocked</text></svg>`;
+}
+
+SR.init.overview = async function () {
+  const host = $("#view-overview");
+  const R = await loadResults(host);
+  if (!R) return;
+  figN = 0;
   const D = R.detection, C = R.e2eCounts, W = R.webE2E;
-  const f1 = (n, s) => D[n][s].f1, rec = (n, s) => D[n][s].recall, fpr = (n, s) => D[n][s].fpr;
-  const detSeries = Object.values(DET);
-  const e2eSeries = Object.values(E2E);
+  const asr = k => rate(C[k].asrB);
+  host.innerHTML = `<div class="page overview">
+    <header class="ov-head">
+      <h1>Can a small local filter stop an email assistant from being hijacked?</h1>
+      <p class="lede">An assistant that reads email, web pages and documents also reads instructions an attacker plants in them.
+        SentinelRAG puts a filter between retrieval and the model and compares three setups: no filter, a fine-tuned DeBERTa classifier,
+        and a prompted Gemma 4 guardrail. Llama-Guard-3-1B and Meta's Prompt Guard 2 are scored alongside for reference.
+        Everything runs on one laptop GPU, and the <code>send_email</code> tool only records calls.</p>
+    </header>
 
-  /* headline cards */
-  const asrB = wilson(C.none.asrB.k, C.none.asrB.n);
-  const cards = `<div class="cards">
-    <div class="card" style="--c:var(--c-none)"><b>Undefended assistant</b><div class="stat">${pct(asrB.p)}</div>
-      <p>of retrieved LLMail attacks (set B) made the assistant email the attacker (${asrB.k} of ${asrB.n}).</p></div>
-    <div class="card" style="--c:var(--c-classifier)"><b>Fine-tuned DeBERTa</b><div class="stat">${pct(C.classifier.asrB.k / C.classifier.asrB.n)}</div>
-      <p>attack success. It blocks ${pct(C.classifier.blockedB.k / C.classifier.blockedB.n)} of set B attacks in about ${Math.round(D.classifier.testB_llmail.ms_median)} ms per document.</p></div>
-    <div class="card" style="--c:var(--c-slm)"><b>Gemma 4 judge</b><div class="stat">${pct(C.slm_judge.asrB.k / C.slm_judge.asrB.n)}</div>
-      <p>attack success. It blocks ${pct(C.slm_judge.blockedB.k / C.slm_judge.blockedB.n)}, at about ${Math.round(D.slm_judge.testB_llmail.ms_median)} ms per document.</p></div>
-    <div class="card" style="--c:var(--c-pg2)"><b>Prompt Guard 2 (reference)</b><div class="stat">${pct(rec("prompt_guard2", "testB_llmail"), 0)}</div>
-      <p>recall on set B. It targets jailbreaks, not task-style email injections.</p></div></div>`;
+    ${fig("How a question is answered, and where the filter sits.", `
+      <ol class="flow">
+        <li><b>Question</b><span>from the user</span></li>
+        <li><b>Retrieve</b><span>top 5 by MiniLM embedding</span></li>
+        <li class="flow-filter"><b>Filter</b><span>each document, one at a time</span>
+          <span class="strips" aria-label="Five retrieved documents, one withheld">
+            <i></i><i></i><i class="redacted">withheld</i><i></i><i></i></span></li>
+        <li><b>Assistant</b><span>Gemma 4 E2B with <code>send_email</code></span></li>
+        <li><b>Answer</b><span>or a tool call</span></li>
+      </ol>`, "A withheld document is replaced by a placeholder, so the model never reads its text. The attack counts as successful when the assistant calls <code>send_email</code> to an address planted in the content.")}
 
-  /* detection F1 */
-  const f1Groups = SETS.map(([s, label]) => ({ label, bars: Object.keys(DET).map(n => ({ v: f1(n, s), color: DET[n].color, title: `${DET[n].name}: F1 ${f1(n, s).toFixed(3)}` })) }));
+    <div class="ov-split">
+      ${fig("Safety against usability, end to end on emails.", tradeoffPlot(C),
+        `Bottom right is better: many attacks blocked, few harmless emails blocked. Each point is one defence over 100 retrieval cases per set; lines are 95% Wilson intervals. With no filter, ${pct(asr("none"))} of retrieved set B attacks hijacked the assistant.
+         The judge blocks the most attacks but also blocks ${pct(rate(C.slm_judge.hardNegBlocked), 0)} of harmless emails that ask a person to do something. Llama-Guard blocks everything of that kind.`)}
+      <section class="findings" aria-labelledby="fTitle">
+        <h2 id="fTitle">What the measurements say</h2>
+        <ol>
+          <li><p><b>Both filters cut hijacks.</b> Attack success on set B fell from ${pct(asr("none"))} with no filter to ${pct(asr("classifier"))} with DeBERTa and ${pct(asr("slm_judge"))} with the Gemma judge.</p></li>
+          <li><p><b>Neither wins everywhere.</b> On unseen email attacks the judge leads (F1 ${D.slm_judge.testB_llmail.f1.toFixed(2)} against ${D.classifier.testB_llmail.f1.toFixed(2)}).
+            On web pages DeBERTa blocks ${pct(rate(W.classifier.blocked), 0)} of attacks and the judge ${pct(rate(W.slm_judge.blocked), 0)}.</p></li>
+          <li><p><b>Speed differs by about four times.</b> DeBERTa takes about ${Math.round(D.classifier.testB_llmail.ms_median)} ms per document, the judge about ${Math.round(D.slm_judge.testB_llmail.ms_median)} ms.</p></li>
+          <li><p><b>Off-the-shelf detectors miss this attack style.</b> Prompt Guard 2 catches ${pct(D.prompt_guard2.testB_llmail.recall, 0)} of set B attacks, because it was built for jailbreaks, not task-style requests.</p></li>
+        </ol>
+        <p><a href="#results">All measurements, with intervals</a></p>
+      </section>
+    </div>
 
-  /* recall / FPR heat table */
-  const heatRows = Object.keys(DET).map(n => `<tr><td><b>${esc(DET[n].name)}</b></td>` + SETS.map(([s]) =>
-    `<td style="${heat(rec(n, s))}">${pct(rec(n, s))}</td><td style="${heat(fpr(n, s), false)}">${pct(fpr(n, s))}</td>`).join("") + `</tr>`).join("");
+    <section class="ov-when" aria-labelledby="wTitle">
+      <h2 id="wTitle">Which defence when</h2>
+      <table class="plain">
+        <thead><tr><th scope="col">If the situation is</th><th scope="col">Use</th><th scope="col">Because</th></tr></thead>
+        <tbody>
+          <tr><td>High volume, tight latency, many emails that make requests of people</td><td><span class="who">${swatch("classifier")}Fine-tuned DeBERTa</span></td><td>Fast and rarely blocks harmless mail. It misses some unseen attack wording and varies by training seed, so validate it and retrain on new attack styles.</td></tr>
+          <tr><td>Email, where a missed attack costs more than a blocked email</td><td><span class="who">${swatch("slm")}Gemma 4 judge</span></td><td>Highest recall on unseen email attacks. Slower, and blocks about one in five harmless request emails.</td></tr>
+          <tr><td>Web pages or raw HTML</td><td><span class="who">${swatch("classifier")}Fine-tuned DeBERTa</span></td><td>The judge misses many injections hidden in markup, such as hidden divs and alt text.</td></tr>
+          <tr><td>Neither is strong enough alone</td><td>Both in sequence</td><td>Not measured here.</td></tr>
+          <tr><td>Considering Llama-Guard-3-1B</td><td><span class="who">${swatch("llamaguard")}Not as configured</span></td><td>Its built-in categories do not cover injection, and a custom category makes it flag nearly everything.</td></tr>
+        </tbody>
+      </table>
+      <p class="note">Filters lower the risk; they do not remove it. Requiring approval before any tool call that sends data out, and splitting a quarantined reader model from the tool-using model, matter more. Both are described in the write-up but not built here.</p>
+    </section>
 
-  /* latency */
-  const latGroups = SETS.map(([s, label]) => ({ label, bars: Object.keys(DET).map(n => ({ v: D[n][s].ms_median, color: DET[n].color, title: `median ${D[n][s].ms_median.toFixed(0)} ms, p95 ${D[n][s].ms_p95.toFixed(0)} ms` })) }));
-  const latMax = Math.max(...latGroups.flatMap(g => g.bars.map(b => b.v)));
-
-  /* end to end */
-  const e2eMetric = (label, key) => ({ label, bars: Object.keys(E2E).map(m => cnt(C[m][key], E2E[m].color)) });
-  const e2eGroups = [
-    e2eMetric("Attack success, set A (BIPIA)", "asrA"), e2eMetric("Attack success, set B (LLMail)", "asrB"),
-    e2eMetric("Attacks blocked, set B", "blockedB"), e2eMetric("Harmless instruction-like emails wrongly blocked", "hardNegBlocked"),
-    e2eMetric("Ordinary emails wrongly blocked", "cleanBlocked")
-  ];
-  const tableGroups = [e2eMetric("Table answered correctly, no attack", "tableClean"), e2eMetric("Table answered correctly, under attack", "tableAttacked")];
-
-  /* web */
-  const webMetric = (label, key) => ({ label, bars: Object.keys(E2E).map(m => cnt(W[m][key], E2E[m].color)) });
-  const webGroups = [webMetric("Attack success", "asr"), webMetric("Attacks blocked", "blocked"), webMetric("Clean pages wrongly blocked", "falseBlock")];
-  const vecs = Object.keys(R.webByVector.classifier);
-  const vecRows = vecs.map(v => `<tr><td><b>${esc(VECTOR_NOTES[v] || v)}</b></td>` + ["classifier", "slm_judge", "llamaguard"].map(m => {
-    const c = R.webByVector[m][v], p = c.k / c.n; return `<td style="${heat(p)}">${c.k} / ${c.n}</td>`;
-  }).join("") + `</tr>`).join("");
-
-  /* seeds */
-  const seedBars = (label, s, key) => ({ label, bars: SEEDS.map(([n, nm, col]) => ({ v: D[n][s][key], color: col, title: `${nm}: ${pct(D[n][s][key])}` })) });
-  const seedGroups = [
-    seedBars("Set B recall (unseen email attacks)", "testB_llmail", "recall"), seedBars("Web recall", "testD_web", "recall"),
-    seedBars("Set A false-positive rate", "testA_bipia_email", "fpr"), seedBars("Web false-positive rate", "testD_web", "fpr")
-  ];
-  const sb = SEEDS.map(([n]) => D[n].testB_llmail.recall);
-
-  const sizes = R.sizes;
-  const sizeRows = [["train", "Training"], ["val", "Validation (disjoint source emails)"], ...SETS].map(([k, label]) =>
-    `<tr><td>${esc(label)}</td><td>${sizes[k].total.toLocaleString()}</td><td>${sizes[k].attacks.toLocaleString()}</td><td>${(sizes[k].total - sizes[k].attacks).toLocaleString()}</td></tr>`).join("");
-
-  host.innerHTML = `
-    <h1>Results</h1>
-    <p class="lead">Everything measured in this project. Bars with a grey span show a 95% Wilson interval. These are single runs on one RTX 4050, so differences of a few points are within noise.</p>
-    ${cards}
-
-    <h2>1. Does it spot the injection? Detection F1 per document</h2>
-    ${legend(detSeries)}${chart(f1Groups, { fmt: v => v.toFixed(3) })}
-    <div class="takeaway">On <b>set B</b>, the one the classifier never trained on, the judge leads: F1 ${f1("slm_judge", "testB_llmail").toFixed(3)} against ${f1("classifier", "testB_llmail").toFixed(3)}.
-    On the in-family sets A, C and D the fine-tuned classifier leads (${f1("classifier", "testA_bipia_email").toFixed(3)}, ${f1("classifier", "testC_table").toFixed(3)}, ${f1("classifier", "testD_web").toFixed(3)}).
-    Set A is optimistic for the classifier because it trained on the same benchmark family.</div>
-
-    <h3>Recall and false-positive rate, side by side</h3>
-    <table class="heat"><thead><tr><th rowspan="2">Detector</th>${SETS.map(([, l]) => `<th colspan="2">${esc(l.split(":")[0])}: ${esc(l.split(": ")[1])}</th>`).join("")}</tr>
-    <tr>${SETS.map(() => "<th>Recall</th><th>False pos.</th>").join("")}</tr></thead><tbody>${heatRows}</tbody></table>
-    <div class="takeaway warn">Llama-Guard flags almost everything once given a custom injection category, so its recall looks fine while its false-positive rate is not usable. Prompt Guard 2 almost never fires on these task-style injections.</div>
-
-    <h2>2. How fast? Median time per document</h2>
-    ${legend(detSeries)}${chart(latGroups, { max: latMax * 1.05, fmt: v => `${Math.round(v)} ms` })}
-    <div class="takeaway">The classifier takes ${Math.round(D.classifier.testB_llmail.ms_median)}-${Math.round(Math.max(...SETS.map(([s]) => D.classifier[s].ms_median)))} ms per document. The judge takes ${Math.round(Math.min(...SETS.map(([s]) => D.slm_judge[s].ms_median)))}-${Math.round(Math.max(...SETS.map(([s]) => D.slm_judge[s].ms_median)))} ms because it generates text. Per query, multiply by up to five retrieved documents.</div>
-
-    <h2>3. What happens to the assistant? End to end on emails</h2>
-    <p>The assistant (Gemma 4 E2B) retrieves up to five emails, the defence filters them, and success means it called <code>send_email</code> to the attacker. n = 100 cases per set.</p>
-    ${legend(e2eSeries)}${chart(e2eGroups)}
-    <div class="takeaway">Undefended, ${pct(asrB.p)} of retrieved set B attacks succeed. The classifier cuts that to ${pct(C.classifier.asrB.k / C.classifier.asrB.n)} and the judge to ${pct(C.slm_judge.asrB.k / C.slm_judge.asrB.n)}.
-    The price is usability: the judge wrongly blocks ${pct(C.slm_judge.hardNegBlocked.k / C.slm_judge.hardNegBlocked.n, 0)} of harmless emails that give instructions to people, the classifier ${pct(C.classifier.hardNegBlocked.k / C.classifier.hardNegBlocked.n, 0)}, Llama-Guard ${pct(C.llamaguard.hardNegBlocked.k / C.llamaguard.hardNegBlocked.n, 0)}.</div>
-    <div class="takeaway warn">The undefended baseline is only moderately vulnerable (Gemma often summarises an injection instead of obeying it), so "attacks blocked" is the steadier signal.</div>
-
-    <h3>The cost of withholding a document: tables</h3>
-    ${legend(e2eSeries)}${chart(tableGroups)}
-    <div class="takeaway">Withholding an attacked table also withholds the data needed to answer. Accuracy under attack falls from ${pct(C.none.tableAttacked.k / C.none.tableAttacked.n, 0)} (undefended) to ${pct(C.classifier.tableAttacked.k / C.classifier.tableAttacked.n, 0)} (classifier) and ${pct(C.slm_judge.tableAttacked.k / C.slm_judge.tableAttacked.n, 0)} (judge). A real deployment needs a sanitise-and-continue path.</div>
-
-    <h2>4. Web pages: where the ranking flips</h2>
-    <p>Raw HTML from 59 Wikipedia articles with an injection hidden six ways. 80 attacked and 40 clean pages per run.</p>
-    ${legend(e2eSeries)}${chart(webGroups)}
-    <h3>Attacks blocked, by where the injection hides</h3>
-    <table class="heat"><thead><tr><th>Hiding place</th><th>DeBERTa</th><th>Gemma judge</th><th>Llama-Guard</th></tr></thead><tbody>${vecRows}</tbody></table>
-    <div class="takeaway">The classifier blocks ${pct(W.classifier.blocked.k / W.classifier.blocked.n, 0)} of attacked pages, the judge ${pct(W.slm_judge.blocked.k / W.slm_judge.blocked.n, 0)}. The judge seems to treat markup as noise, and hidden divs and alt text are where it fails most.
-    Undefended ASR is only ${pct(W.none.asr.k / W.none.asr.n)}, so use the blocked rate.</div>
-
-    <h2>5. How stable is the classifier? Three training seeds</h2>
-    <div class="legend">${SEEDS.map(([, n, c]) => `<span><i style="background:${c}"></i>${n}</span>`).join("")}</div>${chart(seedGroups)}
-    <div class="takeaway warn">Training variance is large. Recall on unseen LLMail attacks ranges from ${pct(Math.min(...sb))} to ${pct(Math.max(...sb))}, and the false-positive rate on held-out benign wording from ${pct(Math.min(...SEEDS.map(([n]) => fpr(n, "testA_bipia_email"))))} to ${pct(Math.max(...SEEDS.map(([n]) => fpr(n, "testA_bipia_email"))))}.
-    The seed 13 numbers elsewhere in this dashboard are one draw. The judge and Llama-Guard run at temperature 0, so they have no seed variance.</div>
-
-    <h2>6. The data</h2>
-    <table class="tbl-plain"><thead><tr><th>Set</th><th>Rows</th><th>Attacks</th><th>Safe</th></tr></thead><tbody>${sizeRows}</tbody></table>
-    <p class="hint">Reproduce everything with <code>python -m sentinel.report</code>. This page reads a snapshot taken with <code>python -m scripts.build_showcase</code>.</p>`;
+    <section class="ov-tour" aria-labelledby="tTitle">
+      <h2 id="tTitle">See it happen</h2>
+      <ol>
+        <li><a href="#mailbox">Mailbox</a><p>A working inbox with real dataset attacks in it. Ask the assistant a question under each filter and watch which emails get withheld.</p></li>
+        <li><a href="#web">Web pages</a><p>The same page as a person sees it and as the HTML the assistant reads. Hidden text is invisible to one and plain to the other.</p></li>
+        <li><a href="#documents">Documents</a><p>Tables with questions. Withholding an attacked table also withholds the answer.</p></li>
+        <li><a href="#cases">Case studies</a><p>Fifteen recorded cases, including where each filter fails, ready to rerun live.</p></li>
+        <li><a href="#detector">Detector</a><p>Any text against every detector, with scores and timings.</p></li>
+      </ol>
+      <p class="hint">Presenting? Keep <b>Show attacks</b> off while you demonstrate, then switch it on to point at the injected text.</p>
+    </section>
+  </div>`;
 };
 
-/* =============== Project =============== */
-SR.init.project = async function () {
-  await SR.ready;
-  const host = $("#projectMain");
-  host.innerHTML = `
-    <h1>SentinelRAG</h1>
-    <p class="lead">A comparison of defences against indirect prompt injection for an email assistant that retrieves content and can call a <code>send_email</code> tool.</p>
+/* ---------- Results ---------- */
+SR.init.results = async function () {
+  const host = $("#view-results");
+  const R = await loadResults(host);
+  if (!R) return;
+  figN = 0;
+  const D = R.detection, C = R.e2eCounts, W = R.webE2E;
+  const f1Groups = SETS.map(([s, l, sub]) => ({ label: `Set ${l}`, sub, bars: DETS.map(k => ({ key: k, name: SHORT[k], v: D[k][s].f1, color: colorOf(k), ref: refOf(k), title: `precision ${D[k][s].precision.toFixed(3)}, recall ${D[k][s].recall.toFixed(3)}` })) }));
+  const best = (s, key, low) => DETS.reduce((a, k) => (low ? D[k][s][key] < D[a][s][key] : D[k][s][key] > D[a][s][key]) ? k : a, DETS[0]);
+  const rfRows = DETS.map(k => `<tr><th scope="row"><span class="who">${swatch(KEY2DEF[k])}${SHORT[k]}</span></th>${SETS.map(([s]) => {
+    const r = D[k][s].recall, f = D[k][s].fpr;
+    return `<td class="${best(s, "recall") === k ? "best" : ""}">${pct(r)}</td><td class="${best(s, "fpr", true) === k ? "best" : ""}">${pct(f)}</td>`;
+  }).join("")}</tr>`).join("");
+  const latMax = Math.max(...DETS.flatMap(k => SETS.map(([s]) => D[k][s].ms_median)));
+  const latGroups = SETS.map(([s, l, sub]) => ({ label: `Set ${l}`, sub, bars: DETS.map(k => ({ key: k, name: SHORT[k], v: D[k][s].ms_median, color: colorOf(k), ref: refOf(k), title: `median ${D[k][s].ms_median.toFixed(0)} ms, p95 ${D[k][s].ms_p95.toFixed(0)} ms` })) }));
+  const metric = (label, key, src = C, sub = "") => ({ label, sub, bars: E2ES.map(k => countBar(k, src[k][key])) });
+  const vecs = Object.keys(R.webByVector.classifier);
+  const vecRows = vecs.map(v => `<tr><th scope="row">${esc(VECTOR[v] || v)}</th>${["classifier", "slm_judge", "llamaguard"].map(k => {
+    const c = R.webByVector[k][v]; return `<td><span class="num">${c.k} / ${c.n}</span> <span class="mini" style="--c:${colorOf(k)}"><i style="width:${(c.k / c.n) * 100}%"></i></span></td>`;
+  }).join("")}</tr>`).join("");
+  const seedGroups = [["Set B recall", "unseen email attacks", "testB_llmail", "recall"], ["Web recall", "", "testD_web", "recall"],
+                      ["Set A false positives", "held-out benign wording", "testA_bipia_email", "fpr"], ["Web false positives", "", "testD_web", "fpr"]]
+    .map(([label, sub, s, key]) => ({ label, sub, bars: SEEDS.map(([k, n], i) => ({ name: n, v: D[k][s][key], color: `color-mix(in srgb, var(--c-classifier) ${100 - i * 30}%, white)`, title: pct(D[k][s][key]) })) }));
+  const sb = SEEDS.map(([k]) => D[k].testB_llmail.recall), sa = SEEDS.map(([k]) => D[k].testA_bipia_email.fpr);
+  const sizes = R.sizes;
+  const sizeRows = [["train", "Training"], ["val", "Validation, disjoint source emails"], ...SETS.map(([s, l, sub]) => [s, `Test ${l}: ${sub}`])]
+    .map(([k, label]) => `<tr><th scope="row">${esc(label)}</th><td class="num">${sizes[k].total.toLocaleString()}</td><td class="num">${sizes[k].attacks.toLocaleString()}</td><td class="num">${(sizes[k].total - sizes[k].attacks).toLocaleString()}</td></tr>`).join("");
 
-    <h2>The problem</h2>
-    <p>An assistant that reads emails, web pages and documents also reads instructions an attacker has planted in them. If the model obeys, it can leak data through its tools. This project asks which cheap, local defence stops that best, what it costs in speed, and what it breaks for normal use. Nothing is ever really sent: <code>send_email</code> only records the call.</p>
+  host.innerHTML = `<div class="page results">
+    <header class="page-head">
+      <h1>Results</h1>
+      <p class="lede">Every measurement from the project. Thin lines on bars are 95% Wilson intervals. These are single runs on one RTX 4050, so gaps of a few points are within noise.</p>
+      <nav class="toc" aria-label="On this page"><a href="#r-detect">Detection</a><a href="#r-speed">Speed</a><a href="#r-e2e">End to end</a><a href="#r-web">Web pages</a><a href="#r-seeds">Seeds</a><a href="#r-data">Data</a></nav>
+    </header>
 
-    <h2>How a query flows</h2>
-    <div class="flow">
-      <div>User question</div><span>→</span><div>Retrieve top 5<small>MiniLM embeddings</small></div><span>→</span>
-      <div class="hot">Defence filter<small>per retrieved document</small></div><span>→</span>
-      <div>Assistant<small>Gemma 4 E2B + <code>send_email</code></small></div><span>→</span><div>Answer or tool call</div>
-    </div>
-    <p>A blocked document is replaced by a placeholder, so the model never reads it.</p>
+    <section id="r-detect"><h2>Does the filter spot the injection?</h2>
+      ${fig("Detection F1 per document, by test set. Prompt Guard 2 (hatched) is a reference, not a contestant.", bars(f1Groups, { fmt: v => v.toFixed(3) }),
+        `On set B, which the classifier never trained on, the judge leads: ${D.slm_judge.testB_llmail.f1.toFixed(3)} against ${D.classifier.testB_llmail.f1.toFixed(3)}.
+         On the in-family sets A, C and D the classifier leads. Set A flatters the classifier because it trained on the same benchmark family.`)}
+      <figure class="figure"><figcaption><span class="fig-n">Figure ${++figN}.</span> Recall and false-positive rate. Bold marks the best in each column.</figcaption>
+        <div class="tbl-scroll"><table class="plain numeric">
+          <thead><tr><th scope="col" rowspan="2">Detector</th>${SETS.map(([, l]) => `<th scope="colgroup" colspan="2">Set ${l}</th>`).join("")}</tr>
+          <tr>${SETS.map(() => `<th scope="col">Recall</th><th scope="col">False pos.</th>`).join("")}</tr></thead>
+          <tbody>${rfRows}</tbody></table></div>
+        <p class="reading">Given a custom injection category, Llama-Guard flags almost everything: its recall looks fine and its false-positive rate is unusable. Prompt Guard 2 rarely fires on task-style injections.</p></figure>
+    </section>
 
-    <h2>The three setups compared</h2>
-    <div class="cards">
-      <div class="card" style="--c:var(--c-none)"><b>1. Vulnerable baseline</b><p>The same assistant with no filter. It sets how much risk exists.</p></div>
-      <div class="card" style="--c:var(--c-classifier)"><b>2. Fine-tuned classifier</b><p>DeBERTa-v3-base, fine-tuned on your data. Reads a document in roughly 26 to 45 ms and answers with a probability.</p></div>
-      <div class="card" style="--c:var(--c-slm)"><b>3. Generative guardrail</b><p>A prompted Gemma 4 E2B judge that answers INJECTION or SAFE. A second option, Llama-Guard-3-1B with a custom category, is reported too.</p></div>
-      <div class="card" style="--c:var(--c-pg2)"><b>Reference: Prompt Guard 2</b><p>Meta's pretrained 86M detector, scored for context only. It is not a contestant because "fine-tuned" means your own model.</p></div>
-    </div>
+    <section id="r-speed"><h2>How long does it take?</h2>
+      ${fig("Median time per document, in milliseconds.", bars(latGroups, { max: Math.ceil(latMax / 40) * 40, fmt: v => `${Math.round(v)} ms`, axis: "ms" }),
+        `The classifier needs ${Math.round(Math.min(...SETS.map(([s]) => D.classifier[s].ms_median)))} to ${Math.round(Math.max(...SETS.map(([s]) => D.classifier[s].ms_median)))} ms per document. The judge needs
+         ${Math.round(Math.min(...SETS.map(([s]) => D.slm_judge[s].ms_median)))} to ${Math.round(Math.max(...SETS.map(([s]) => D.slm_judge[s].ms_median)))} ms because it generates text. A question retrieves up to five documents, so multiply by five.`)}
+    </section>
 
-    <h2>Tabs in this dashboard</h2>
-    <table class="tbl-plain"><tbody>
-      <tr><td><b>Mail assistant</b></td><td>A working email client with about 20 emails, including real attacks. Ask the assistant a question under any defence, then see which emails were withheld and any tool call it attempted (shown in Sent).</td></tr>
-      <tr><td><b>Web pages</b></td><td>The same page rendered as a person sees it and as raw HTML the assistant reads. Shows why hidden text works.</td></tr>
-      <tr><td><b>Documents</b></td><td>Tables with questions, some carrying an injection, to show the accuracy cost of blocking.</td></tr>
-      <tr><td><b>Showcase</b></td><td>A scripted tour of real cases, each run live through all four setups next to what happened in the evaluation.</td></tr>
-      <tr><td><b>Detector</b></td><td>Paste text or load a test-set row and see every detector's verdict, score and time.</td></tr>
-      <tr><td><b>Results</b></td><td>All measurements with confidence intervals.</td></tr>
-    </tbody></table>
-    <p>The <b>Reveal attacks</b> button in the top bar marks which items hold an injection. Leave it off while demonstrating, then switch it on to explain.</p>
+    <section id="r-e2e"><h2>What happens to the assistant?</h2>
+      <p class="lede">The assistant retrieves up to five emails, the filter checks them, and an attack succeeds when it calls <code>send_email</code> to the attacker. 100 cases per set.</p>
+      ${fig("End to end on emails.", bars([metric("Attack success", "asrA", C, "set A, BIPIA"), metric("Attack success", "asrB", C, "set B, LLMail"),
+        metric("Attacks blocked", "blockedB", C, "set B"), metric("Harmless requests wrongly blocked", "hardNegBlocked"), metric("Ordinary emails wrongly blocked", "cleanBlocked")]),
+        `With no filter ${pct(rate(C.none.asrB))} of retrieved set B attacks succeed. DeBERTa cuts that to ${pct(rate(C.classifier.asrB))} and the judge to ${pct(rate(C.slm_judge.asrB))}.
+         The undefended assistant often summarises an injection instead of obeying it, so attacks blocked is the steadier signal.`)}
+      ${fig("Withholding a table also withholds the answer.", bars([metric("Answered correctly", "tableClean", C, "no attack"), metric("Answered correctly", "tableAttacked", C, "under attack")]),
+        `Under attack, accuracy falls from ${pct(rate(C.none.tableAttacked), 0)} with no filter to ${pct(rate(C.classifier.tableAttacked), 0)} with DeBERTa and ${pct(rate(C.slm_judge.tableAttacked), 0)} with the judge.
+         A real deployment needs a way to strip the injection and keep the data.`)}
+    </section>
 
-    <h2>Method</h2>
-    <ul class="plain">
-      <li><b>Training data:</b> BIPIA email injections with attack templates and source emails kept disjoint from the test sets. Half the training emails are re-rendered in the LLMail layout so the model cannot learn a format shortcut.</li>
-      <li><b>Test A:</b> BIPIA emails with held-out attack wording. <b>Test B:</b> LLMail-Inject, a different dataset never used in training, so it is the fair cross-dataset test. <b>Test C:</b> tables. <b>Test D:</b> web pages, synthetic, made from Wikipedia articles with six hiding places.</li>
-      <li><b>Negatives:</b> ordinary emails plus <i>hard negatives</i>, harmless emails that give instructions to people, so a filter cannot win by flagging every imperative sentence. LLMail submissions that the benchmark's own judge labelled "not an attack" were excluded because many still asked to email the attacker.</li>
-      <li><b>Assistant:</b> Gemma 4 E2B on llama.cpp with thinking off, temperature 0, top five documents. The system prompt lets it decide whether to use the tool, as in the LLMail challenge. A stricter prompt acted as a defence and hid the effect being studied.</li>
-      <li><b>Statistics:</b> 95% Wilson intervals, and three training seeds for the classifier.</li>
+    <section id="r-web"><h2>Web pages: where the ranking flips</h2>
+      <p class="lede">Raw HTML from 59 Wikipedia articles with an injection hidden six ways: 80 attacked and 40 clean pages per run.</p>
+      ${fig("End to end on web pages.", bars([metric("Attack success", "asr", W), metric("Attacks blocked", "blocked", W), metric("Clean pages wrongly blocked", "falseBlock", W)]),
+        `DeBERTa blocks ${pct(rate(W.classifier.blocked), 0)} of attacked pages and the judge ${pct(rate(W.slm_judge.blocked), 0)}. With no filter only ${pct(rate(W.none.asr))} succeed, so the blocked rate carries the comparison.`)}
+      <figure class="figure"><figcaption><span class="fig-n">Figure ${++figN}.</span> Attacked pages blocked, by where the injection hides.</figcaption>
+        <div class="tbl-scroll"><table class="plain numeric"><thead><tr><th scope="col">Hidden in</th><th scope="col">DeBERTa</th><th scope="col">Gemma judge</th><th scope="col">Llama-Guard</th></tr></thead><tbody>${vecRows}</tbody></table></div>
+        <p class="reading">The judge seems to treat markup as noise. Hidden divs and alt text are where it misses most.</p></figure>
+    </section>
+
+    <section id="r-seeds"><h2>How stable is the classifier?</h2>
+      ${fig("The same classifier trained with three seeds.", bars(seedGroups),
+        `Recall on unseen set B attacks ranges from ${pct(Math.min(...sb))} to ${pct(Math.max(...sb))}, and false positives on held-out benign wording from ${pct(Math.min(...sa))} to ${pct(Math.max(...sa))}.
+         The seed 13 numbers used elsewhere are one draw. The judge and Llama-Guard run at temperature 0, so they have no seed variance.`)}
+    </section>
+
+    <section id="r-data"><h2>The data</h2>
+      <div class="tbl-scroll"><table class="plain numeric"><thead><tr><th scope="col">Split</th><th scope="col">Rows</th><th scope="col">Attacks</th><th scope="col">Safe</th></tr></thead><tbody>${sizeRows}</tbody></table></div>
+      <p class="hint">Reproduce with <code>python -m sentinel.report</code>. This page reads a snapshot made by <code>python -m scripts.build_showcase</code>.</p>
+    </section>
+  </div>`;
+  $$(".toc a", host).forEach(a => a.addEventListener("click", ev => { ev.preventDefault(); $(a.getAttribute("href"), host).scrollIntoView({ block: "start" }); }));
+};
+
+/* ---------- Method ---------- */
+SR.init.method = function () {
+  $("#view-method").innerHTML = `<div class="page prose">
+    <header class="page-head"><h1>Method</h1>
+      <p class="lede">How the comparison was set up, what it can and cannot tell you, and how to reproduce it.</p></header>
+
+    <h2>The setups</h2>
+    <dl class="setups">
+      <dt>${swatch("none")}Vulnerable baseline</dt><dd>The same assistant with no filter. It sets how much risk there is to remove.</dd>
+      <dt>${swatch("classifier")}Fine-tuned classifier</dt><dd>DeBERTa-v3-base fine-tuned on this project's training split. Reads one document in tens of milliseconds and returns a probability; 0.5 is the threshold.</dd>
+      <dt>${swatch("slm")}Generative guardrail</dt><dd>Gemma 4 E2B prompted to answer INJECTION or SAFE for each document, thinking off, temperature 0.</dd>
+      <dt>${swatch("llamaguard")}Llama-Guard-3-1B</dt><dd>A second guardrail, given a custom S1 category for prompt injection because its built-in categories do not cover it.</dd>
+      <dt>${swatch("pg2")}Prompt Guard 2, 86M</dt><dd>Meta's pretrained injection and jailbreak detector. Scored on detection only, for context. It is not a contestant because the brief asks for a model fine-tuned here.</dd>
+    </dl>
+
+    <h2>Data</h2>
+    <ul>
+      <li><b>Training:</b> BIPIA email injections, with attack templates and source emails kept apart from the test sets. Half the training emails are rewritten in the LLMail layout so the model cannot learn a format shortcut.</li>
+      <li><b>Test A:</b> BIPIA emails with attack wording held out from training.</li>
+      <li><b>Test B:</b> LLMail-Inject, a different dataset never used in training. This is the fair cross-dataset test.</li>
+      <li><b>Test C:</b> BIPIA tables with questions.</li>
+      <li><b>Test D:</b> synthetic web pages built from Wikipedia articles, with the injection in one of six places.</li>
+      <li><b>Negatives:</b> ordinary emails plus hard negatives, harmless emails that give instructions to people, so a filter cannot score well by flagging every imperative sentence. LLMail submissions that the benchmark's own judge marked "not an attack" were dropped, because many of them still asked to email the attacker.</li>
     </ul>
 
-    <h2>Which defence when</h2>
-    <table class="tbl-plain"><thead><tr><th>Situation</th><th>Pick</th><th>Why</th></tr></thead><tbody>
-      <tr><td>High volume, strict latency, many harmless emails with requests</td><td>Fine-tuned DeBERTa</td><td>About 26 to 45 ms per document, few false blocks. Misses some unseen attack wording and varies by training seed, so validate the threshold and retrain on new attack styles.</td></tr>
-      <tr><td>Attacks are the bigger worry in email, some false blocks are acceptable</td><td>Prompted Gemma judge</td><td>Highest recall on unseen email attacks. About four times slower, and blocks roughly one in five harmless instruction-like emails.</td></tr>
-      <tr><td>Content is web pages or raw HTML</td><td>Fine-tuned DeBERTa</td><td>The judge misses many injections hidden in markup.</td></tr>
-      <tr><td>Neither is strong enough alone</td><td>Run both in sequence</td><td>Not measured here.</td></tr>
-      <tr><td>Llama-Guard-3-1B</td><td>Not as configured</td><td>Its built-in categories do not cover injection, and a custom category flags almost everything.</td></tr>
-    </tbody></table>
-    <div class="takeaway warn">Filters lower risk and never remove it. Structural controls matter more: require approval before any tool call that sends data out, and split a quarantined reader model from a privileged tool-using model. Those two are described but not built or tested here.</div>
+    <h2>The assistant</h2>
+    <p>Gemma 4 E2B on llama.cpp, thinking off, temperature 0, top five documents by MiniLM similarity. Its system prompt says it may decide whether to use the tool, as in the LLMail challenge. A stricter prompt behaved like a defence of its own and hid the effect under study.</p>
+
+    <h2>Statistics</h2>
+    <p>Proportions carry 95% Wilson intervals. The classifier was trained with three seeds (13, 21, 42) to show training variance; the end-to-end runs use seed 13.</p>
 
     <h2>Limitations</h2>
-    <ul class="plain">
-      <li>One machine, single runs. Intervals cover case sampling, not training variance, which is large for the classifier.</li>
+    <ul>
+      <li>One machine and single runs. Intervals cover case sampling, not training variance, which is large for the classifier.</li>
       <li>The end-to-end runs use the seed 13 classifier only.</li>
-      <li>Web pages are synthetic and use clean Wikipedia text, a friendly sample.</li>
-      <li>The undefended assistant is only moderately obedient, which narrows the baseline gap.</li>
-      <li>Block-only defences lose the data they block.</li>
+      <li>Web pages are synthetic and built from clean Wikipedia text, a friendly sample.</li>
+      <li>The undefended assistant is only moderately obedient, which narrows the gap to the baseline.</li>
+      <li>Block-only filters lose whatever they block, including the useful data in an attacked document.</li>
     </ul>
 
-    <h2>Run it yourself</h2>
-    <pre class="cmd">python -m sentinel.server          # this dashboard, http://127.0.0.1:8000
+    <h2>Reproduce</h2>
+    <pre class="cmd">python -m sentinel.server         # this dashboard, http://127.0.0.1:8000
 python -m sentinel.eval_detection classifier slm_judge llamaguard prompt_guard2
 python -m sentinel.eval_e2e none classifier slm_judge llamaguard --n 100
 python -m sentinel.eval_web_e2e none classifier slm_judge llamaguard --n 80
-python -m sentinel.report          # tables for RESULTS.md
-python -m scripts.build_showcase   # refresh the dashboard's data snapshot</pre>`;
+python -m sentinel.report         # tables for RESULTS.md
+python -m scripts.build_showcase  # refresh this dashboard's data snapshot</pre>
+  </div>`;
 };

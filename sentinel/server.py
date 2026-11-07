@@ -215,14 +215,22 @@ def status():
 
 @app.get("/")
 def index():
-    return FileResponse(ROOT / "index.html")
+    return FileResponse(ROOT / "index.html", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/fonts/{name}")
+def font(name: str):
+    p = ROOT / "fonts" / name
+    if p.suffix == ".woff2" and "\\" not in name and ".." not in name and p.is_file():
+        return FileResponse(p, media_type="font/woff2")
+    return JSONResponse({"error": "not found"}, status_code=404)
 
 
 @app.get("/{name}")
 def static(name: str):
     p = ROOT / name
     if p.suffix in STATIC and "\\" not in name and ".." not in name and p.is_file():
-        return FileResponse(p)
+        return FileResponse(p, headers={"Cache-Control": "no-cache"})
     return JSONResponse({"error": "not found"}, status_code=404)
 
 
